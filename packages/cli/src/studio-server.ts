@@ -380,61 +380,99 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           connection: 'keep-alive',
         });
 
+        const sseWrite = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
         let assistantText = '';
         let textChunks = 0;
-        const handle = spawnAgent({
-          def: agentDef,
-          prompt: fullPrompt,
-          context: { cwd: projectDir },
-          onEvent: (ev) => {
-            if (ev.type === 'text') {
-              assistantText += ev.chunk;
-              textChunks += 1;
-              res.write(`data: ${JSON.stringify(ev)}\n\n`);
-            } else if (ev.type === 'error' || ev.type === 'message_end') {
-              if (ev.type === 'error') {
-                process.stderr.write(`[studio:msg] proj=${id} agent-error: ${ev.message}\n`);
-              }
-              res.write(`data: ${JSON.stringify(ev)}\n\n`);
-            }
-          },
-        });
-        const exitInfo = await handle.done;
-        const elapsedMs = Date.now() - t0;
-        process.stderr.write(
-          `[studio:msg] proj=${id} phase=${phaseInfo.phase} done in ${elapsedMs}ms exit=${exitInfo.exitCode} text=${assistantText.length}B chunks=${textChunks}\n`,
-        );
-
-        // v0.8: try multi-frame path first — content-graph JSON + tagged html blocks.
-        // Fall back to single-frame fast path (v0.7) when no graph is emitted.
-        const multi = extractContentGraphAndFrames(assistantText);
         let summaryLine = '';
-        if (multi && multi.frames.length > 0) {
-          await ctx.orchestrator.writeContentGraph(id, multi.graph);
-          for (const f of multi.frames) {
-            try {
-              await ctx.orchestrator.writeFrameHtml(id, f.nodeId, f.html);
-            } catch (err) {
-              // Don't abort the whole turn for one bad frame; surface a hint.
-              const msg = err instanceof Error ? err.message : String(err);
-              res.write(
-                `data: ${JSON.stringify({ type: 'text', chunk: `\n[frame ${f.nodeId} skipped: ${msg}]\n` })}\n\n`,
-              );
-            }
+
+        // ---- generate-phase: multi-frame path runs split (graph + per-frame) ----
+        // Empirically claude --print returns 1 byte ~50% of the time when asked
+        // to emit a graph and 4-6 full HTML pages in a single response. Each
+        // call individually is reliable, so we orchestrate them ourselves and
+        // stream progress events to the UI.
+        const isMultiGenerate =
+          phaseInfo.phase === 'generate' &&
+          Number(phaseInfo.inputs.collected?.frame_count ?? '1') > 1;
+
+        if (isMultiGenerate) {
+          try {
+            const result = await runSplitMultiFrameGenerate({
+              ctx,
+              projectId: id,
+              projectDir,
+              agentDef,
+              tmpl,
+              priorHtml,
+              inputs: phaseInfo.inputs,
+              attachments,
+              onProgress: (msg) => {
+                assistantText += msg + '\n';
+                textChunks += 1;
+                sseWrite({ type: 'text', chunk: msg + '\n' });
+              },
+              onSse: sseWrite,
+            });
+            summaryLine = `✓ ${result.frameCount}-frame storyboard generated (intent: ${result.intent})`;
+            sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: result.frameCount });
+            sseWrite({ type: 'message_end', reason: 'ok' });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`[studio:msg] proj=${id} split-generate failed: ${msg}\n`);
+            sseWrite({ type: 'text', chunk: `\n⚠️ Split generate failed: ${msg}` });
+            sseWrite({ type: 'message_end', reason: 'error' });
+            assistantText = `⚠️ Split generate failed: ${msg}`;
           }
-          res.write(
-            `data: ${JSON.stringify({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: multi.frames.length })}\n\n`,
+          process.stderr.write(
+            `[studio:msg] proj=${id} phase=split-generate done text=${assistantText.length}B\n`,
           );
-          summaryLine = `✓ ${multi.frames.length}-frame storyboard generated (intent: ${multi.graph.intent})`;
         } else {
-          // Single-frame fast path: extract one HTML doc, write preview.
-          const extracted = extractHtmlDocument(assistantText);
-          if (extracted) {
-            await ctx.orchestrator.writePreviewHtmlRaw(id, extracted);
-            res.write(
-              `data: ${JSON.stringify({ type: 'preview_ready', preview_url: `/preview/${id}` })}\n\n`,
-            );
-            summaryLine = '✓ updated the HTML preview';
+          // ---- single-shot path (all other phases + single-frame generate) ----
+          const handle = spawnAgent({
+            def: agentDef,
+            prompt: fullPrompt,
+            context: { cwd: projectDir },
+            onEvent: (ev) => {
+              if (ev.type === 'text') {
+                assistantText += ev.chunk;
+                textChunks += 1;
+                sseWrite(ev);
+              } else if (ev.type === 'error' || ev.type === 'message_end') {
+                if (ev.type === 'error') {
+                  process.stderr.write(`[studio:msg] proj=${id} agent-error: ${ev.message}\n`);
+                }
+                sseWrite(ev);
+              }
+            },
+          });
+          const exitInfo = await handle.done;
+          const elapsedMs = Date.now() - t0;
+          process.stderr.write(
+            `[studio:msg] proj=${id} phase=${phaseInfo.phase} done in ${elapsedMs}ms exit=${exitInfo.exitCode} text=${assistantText.length}B chunks=${textChunks}\n`,
+          );
+
+          // Multi-frame extraction on the off chance the agent did emit it
+          // (e.g. on a free-text iterate turn the user's text triggered it).
+          const multi = extractContentGraphAndFrames(assistantText);
+          if (multi && multi.frames.length > 0) {
+            await ctx.orchestrator.writeContentGraph(id, multi.graph);
+            for (const f of multi.frames) {
+              try {
+                await ctx.orchestrator.writeFrameHtml(id, f.nodeId, f.html);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                sseWrite({ type: 'text', chunk: `\n[frame ${f.nodeId} skipped: ${msg}]\n` });
+              }
+            }
+            sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}`, frames: multi.frames.length });
+            summaryLine = `✓ ${multi.frames.length}-frame storyboard generated (intent: ${multi.graph.intent})`;
+          } else {
+            const extracted = extractHtmlDocument(assistantText);
+            if (extracted) {
+              await ctx.orchestrator.writePreviewHtmlRaw(id, extracted);
+              sseWrite({ type: 'preview_ready', preview_url: `/preview/${id}` });
+              summaryLine = '✓ updated the HTML preview';
+            }
           }
         }
 
@@ -1436,4 +1474,219 @@ function extractContentGraphAndFrames(
   }
 
   return { graph, frames };
+}
+
+// ---------------------------------------------------------------------------
+// Split multi-frame generate
+//
+// `claude --print` is unreliable when asked to emit a content-graph PLUS
+// 4-6 full HTML pages in one shot — it tends to time out at 100s+ with 1
+// byte of output. Each call individually is fine, so we orchestrate:
+//
+//   1. one short call → graph JSON
+//   2. one short call per node → frame HTML
+//
+// Each step writes its result to disk and pushes an SSE event so the UI
+// can show "frame N/M" progress.
+// ---------------------------------------------------------------------------
+interface SplitGenerateArgs {
+  ctx: CliContext;
+  projectId: string;
+  projectDir: string;
+  agentDef: import('@html-video/runtime').AgentDef;
+  tmpl: import('@html-video/core').TemplateMetadata | null;
+  priorHtml: string;
+  inputs: PhaseInputs;
+  attachments: Attachment[];
+  /** Called for human-readable progress lines. */
+  onProgress: (msg: string) => void;
+  /** Called for structured SSE events. */
+  onSse: (obj: unknown) => void;
+}
+
+async function runSplitMultiFrameGenerate(
+  args: SplitGenerateArgs,
+): Promise<{ frameCount: number; intent: string }> {
+  const { ctx, projectId, projectDir, agentDef, tmpl, priorHtml, inputs, attachments, onProgress, onSse } = args;
+  const collected = inputs.collected ?? {};
+  const pickedType = inputs.pickedType ?? '';
+  const pickedStyle = inputs.pickedStyle ?? '';
+  const contentTurns = inputs.contentTurns ?? [];
+  const aspect = ((collected.aspect ?? '16:9').split(/\s+/)[0] ?? '16:9');
+  const frameCountReq = Math.max(2, Math.min(6, Number(collected.frame_count ?? '4') || 4));
+  const totalDurationSec = Number(collected.duration ?? '15') || 15;
+  const perFrameDurationSec = Math.max(2, Math.floor(totalDurationSec / frameCountReq));
+  let resolution = '1920×1080';
+  if (aspect === '9:16') resolution = '1080×1920';
+  else if (aspect === '1:1') resolution = '1080×1080';
+  else if (aspect === '4:5') resolution = '1080×1350';
+
+  const styleLabel = pickedStyle && /^从设计模板选|template/i.test(pickedStyle)
+    ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
+    : pickedStyle;
+
+  // ---- Step 1: ask for the content graph only ----
+  onProgress(`📋 规划 ${frameCountReq} 帧的故事板…`);
+  const graphPromptParts: string[] = [];
+  graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
+  graphPromptParts.push('');
+  graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
+  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'}`);
+  if (contentTurns.length > 0) {
+    graphPromptParts.push(`- 内容 / content:`);
+    for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
+  }
+  if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
+  graphPromptParts.push(`- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
+  graphPromptParts.push('');
+  graphPromptParts.push(`Schema (keep all keys; one node per frame; nodes[].id should be a short readable slug like "intro" / "stat_users" / "outro"):`);
+  graphPromptParts.push('```json#content-graph');
+  graphPromptParts.push(JSON.stringify({
+    schemaVersion: 1,
+    intent: 'explainer',
+    synopsis: '<one-line description of the video>',
+    nodes: Array.from({ length: frameCountReq }, (_, i) => ({
+      id: `frame_${i + 1}`,
+      kind: i === 0 ? 'text' : i === frameCountReq - 1 ? 'entity' : 'data',
+      durationSec: perFrameDurationSec,
+      text: '<headline / subtitle for this frame>',
+    })),
+    edges: Array.from({ length: frameCountReq - 1 }, (_, i) => ({
+      from: `frame_${i + 1}`,
+      to: `frame_${i + 2}`,
+      kind: 'sequence',
+    })),
+  }, null, 2));
+  graphPromptParts.push('```');
+  graphPromptParts.push('');
+  graphPromptParts.push(`Replace the placeholder text in each node with concrete content from the inputs. Adjust intent to match (single-frame|explainer|data-viz|promo|comparison|other). Keep node ids unique. Do NOT return an empty reply. Do NOT emit any HTML this turn.`);
+
+  const graphPrompt = graphPromptParts.join('\n');
+  const graphText = await callAgentSimple(agentDef, graphPrompt, projectDir);
+  const graphMatch = /```json#content-graph\s*\n([\s\S]*?)```/i.exec(graphText)
+    ?? /```json\s*\n([\s\S]*?)```/i.exec(graphText);
+  if (!graphMatch || !graphMatch[1]) {
+    throw new Error(`agent did not return a content-graph (got ${graphText.length} bytes, head: ${graphText.slice(0, 80)})`);
+  }
+  let graph: import('@html-video/content-graph').ContentGraph;
+  try {
+    graph = JSON.parse(graphMatch[1].trim()) as import('@html-video/content-graph').ContentGraph;
+  } catch (e) {
+    throw new Error(`graph JSON failed to parse: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+    throw new Error('graph has no nodes');
+  }
+  await ctx.orchestrator.writeContentGraph(projectId, graph);
+  onProgress(`✓ 故事板规划完成：${graph.nodes.length} 帧 (${graph.intent})`);
+  onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
+
+  // ---- Step 2: one call per node, output a single ```html block ----
+  for (let i = 0; i < graph.nodes.length; i++) {
+    const node = graph.nodes[i]!;
+    const nodeId = node.id;
+    onProgress(`🎬 生成第 ${i + 1}/${graph.nodes.length} 帧 (${nodeId})…`);
+    onSse({ type: 'frame_started', node_id: nodeId, order: i, total: graph.nodes.length });
+
+    const frameContext = describeNode(node);
+    const fp: string[] = [];
+    fp.push(`Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`);
+    fp.push('');
+    fp.push(`Frame ${i + 1} of ${graph.nodes.length}: ${frameContext}`);
+    fp.push(`Duration: ${node.durationSec ?? perFrameDurationSec}s`);
+    fp.push(`Type: ${pickedType}`);
+    if (styleLabel) fp.push(`Style: ${styleLabel}`);
+    fp.push(`Resolution: ${aspect} (${resolution})`);
+    fp.push('');
+    if (contentTurns.length > 0) {
+      fp.push(`Source material from the user (use literally; do NOT invent facts):`);
+      for (const t of contentTurns) fp.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
+      fp.push('');
+    }
+    fp.push(`Output: begin with \`\`\`html and end with \`\`\`. Inline CSS + JS, full-bleed ${resolution}, opens with an animation timeline. Tag visible text with data-hv-text. CDN imports (Tailwind, GSAP) fine. No prose outside the block.`);
+    fp.push('');
+    fp.push(`Skeleton to extend (replace placeholder, expand styling per type / style):`);
+    fp.push('```html');
+    fp.push(`<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:system-ui,sans-serif}
+.stage{width:100vw;height:100vh;display:grid;place-items:center;text-align:center;padding:6vw}
+h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;transform:translateY(24px)}
+@keyframes in{to{opacity:1;transform:none}}
+</style></head><body>
+<div class="stage"><h1 data-hv-text="headline">PLACEHOLDER</h1></div>
+</body></html>`);
+    fp.push('```');
+    if (priorHtml && priorHtml.length > 0) {
+      fp.push('');
+      fp.push(`Visual style reference (mine for palette / typography / motion vocabulary, do not copy literally):`);
+      fp.push('```html');
+      fp.push(priorHtml.slice(0, 2400));
+      fp.push('```');
+    }
+    if (i === 0 && attachments.length > 0) {
+      fp.push('');
+      fp.push(`User attachments (use as actual assets if the frame can use them):`);
+      for (const a of attachments) fp.push(`- [${a.kind}] ${a.filename} — ${a.path}`);
+    }
+    fp.push('');
+    fp.push(`Do NOT return an empty reply. Output the full HTML.`);
+
+    const framePrompt = fp.join('\n');
+    let frameText = await callAgentSimple(agentDef, framePrompt, projectDir);
+    let extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
+      ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
+
+    // One retry on empty: shorter prompt, just the skeleton call.
+    if (!extracted) {
+      onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
+      const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
+      frameText = await callAgentSimple(agentDef, retryPrompt, projectDir);
+      extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
+        ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
+    }
+    if (!extracted) {
+      throw new Error(`frame "${nodeId}" generation returned empty (${frameText.length}B)`);
+    }
+    await ctx.orchestrator.writeFrameHtml(projectId, nodeId, extracted);
+    onProgress(`  ✓ 第 ${i + 1}/${graph.nodes.length} 帧完成 (${nodeId})`);
+    onSse({ type: 'frame_done', node_id: nodeId, order: i, total: graph.nodes.length });
+  }
+
+  return { frameCount: graph.nodes.length, intent: graph.intent };
+}
+
+/** Describe a node's purpose for prompt context. */
+function describeNode(node: import('@html-video/content-graph').Node): string {
+  const bits: string[] = [];
+  if (node.label) bits.push(node.label);
+  if ((node as { text?: string }).text) bits.push(`text: ${(node as { text: string }).text.slice(0, 200)}`);
+  if (node.kind === 'data' && (node as { data?: unknown }).data !== undefined) {
+    bits.push(`data: ${JSON.stringify((node as { data: unknown }).data).slice(0, 200)}`);
+  }
+  if (node.kind === 'entity' && (node as { props?: unknown }).props !== undefined) {
+    bits.push(`entity props: ${JSON.stringify((node as { props: unknown }).props).slice(0, 200)}`);
+  }
+  if (node.frameIntent) bits.push(`intent: ${node.frameIntent}`);
+  if (bits.length === 0) bits.push(`(${node.kind} frame "${node.id}")`);
+  return bits.join('; ');
+}
+
+/** Spawn the agent, collect all stdout text, return when done. */
+async function callAgentSimple(
+  def: import('@html-video/runtime').AgentDef,
+  prompt: string,
+  cwd: string,
+): Promise<string> {
+  let buf = '';
+  const handle = spawnAgent({
+    def,
+    prompt,
+    context: { cwd },
+    onEvent: (ev) => {
+      if (ev.type === 'text') buf += ev.chunk;
+    },
+  });
+  await handle.done;
+  return buf;
 }
