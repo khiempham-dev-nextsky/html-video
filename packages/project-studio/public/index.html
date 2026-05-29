@@ -334,6 +334,29 @@
     background: var(--text-muted); border-radius: 50%; margin-left: 6px;
     animation: pulse 1s infinite; }
   @keyframes pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+  /* Export-done card: show path + "reveal" / "copy" actions */
+  .msg.export-done { align-self: stretch; background: var(--bg-subtle);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 14px 12px; }
+  .msg.export-done .export-title { font-size: 13.5px; font-weight: 500;
+    margin-bottom: 8px; }
+  .msg.export-done .export-path { background: var(--bg-panel);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 6px 10px; margin-bottom: 10px; }
+  .msg.export-done .export-path code { font-size: 11.5px; color: var(--text);
+    font-family: var(--font-mono); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; display: block; }
+  .msg.export-done .export-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .msg.export-done .export-actions button { background: var(--bg);
+    border: 1px solid var(--border); color: var(--text); padding: 5px 10px;
+    border-radius: var(--radius-sm); cursor: pointer; font-size: 11.5px;
+    font-family: var(--font-mono); transition: border-color .12s; }
+  .msg.export-done .export-actions button:hover { border-color: var(--accent); }
+  .msg.export-done .export-actions .btn-reveal { background: var(--accent);
+    border-color: var(--accent); color: var(--accent-fg); }
+  .msg.export-done .export-actions .btn-reveal:hover { background: var(--accent-hover); }
+  .msg.export-done .export-fname { margin-top: 8px; font-size: 10.5px;
+    color: var(--text-muted); font-family: var(--font-mono); letter-spacing: .04em; }
 
   .chat-empty { display: grid; place-items: center; height: 100%; color: var(--text-faint);
     font-size: 13px; padding: 0 18px; text-align: center; line-height: 1.7; }

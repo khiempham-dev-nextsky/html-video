@@ -31,6 +31,8 @@ const state = {
   activeFrameId: null,     // graphNodeId currently shown in iframe
   iterateFocusFrameId: null, // graphNodeId iterations should target only (null = whole video)
   editTextMode: false,     // when true, preview iframe accepts inline text edits
+  exporting: false,        // export run in progress
+  exportProgress: null,    // { pct, stage } during a streamed export
   lastGraph: null,         // last fetched ContentGraph (for download)
 };
 
@@ -79,6 +81,119 @@ async function createDefaultProject() {
   }
   await refreshProjects();
   await selectProject(r.project.id);
+}
+
+// ============== Export MP4 (streamed) ==============
+async function startExportStream() {
+  if (!state.selected) return;
+  const projectId = state.selected.id;
+  state.exporting = true;
+  state.exportProgress = { pct: 0, stage: 'starting' };
+  renderToolbar();
+  state.messages.push({ role: 'preview-event', content: '⏵ 开始导出 MP4…', ts: Date.now() });
+  renderChatLog();
+
+  let res;
+  try {
+    res = await fetch(`/api/projects/${projectId}/export`, {
+      method: 'POST',
+      headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  } catch (e) {
+    state.exporting = false;
+    state.exportProgress = null;
+    toast('Export 失败：' + (e?.message ?? e), 'error');
+    renderToolbar();
+    return;
+  }
+  if (!res.ok || !res.body) {
+    state.exporting = false;
+    state.exportProgress = null;
+    const err = await res.text().catch(() => '');
+    toast('Export 失败：' + err.slice(0, 200), 'error');
+    renderToolbar();
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split('\n\n');
+      buf = events.pop() ?? '';
+      for (const line of events) {
+        if (!line.startsWith('data: ')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+        if (ev.type === 'export_progress') {
+          state.exportProgress = { pct: ev.pct, stage: ev.stage };
+          renderToolbar();
+        } else if (ev.type === 'export_done') {
+          state.exporting = false;
+          state.exportProgress = null;
+          if (ev.project) state.selected = ev.project;
+          const seconds = ev.elapsed_ms ? `${(ev.elapsed_ms / 1000).toFixed(1)}s` : '';
+          state.messages.push({
+            role: 'preview-event',
+            content: `✓ MP4 已导出${seconds ? ' · ' + seconds : ''}`,
+            ts: Date.now(),
+          });
+          state.messages.push({
+            role: 'export-done',
+            content: ev.output_path,
+            ts: Date.now(),
+          });
+          renderChatLog();
+          renderToolbar();
+          refreshProjects();
+        } else if (ev.type === 'export_failed') {
+          state.exporting = false;
+          state.exportProgress = null;
+          state.messages.push({
+            role: 'system',
+            content: `⚠️ 导出失败：${ev.message}`,
+            ts: Date.now(),
+          });
+          renderChatLog();
+          renderToolbar();
+        }
+      }
+    }
+  } catch (e) {
+    state.exporting = false;
+    state.exportProgress = null;
+    toast('Export 流中断：' + (e?.message ?? e), 'error');
+    renderToolbar();
+  }
+}
+
+/**
+ * Detect "I want to export this to MP4" intent in a chat message.
+ * Hits both Chinese + English without leaning on the agent.
+ */
+function isExportIntent(text) {
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length > 80) return false; // long messages are obviously content / iterate requests
+  return /(?:^|\s)(export|render|encode|生成视频|导出|输出 ?mp4|出片)(?:$|\s|视频|为 ?mp4|成 ?mp4)/i.test(t)
+    || /^\s*(export|render|encode|导出|出片|生成 ?mp4|输出 ?mp4)\s*$/i.test(t)
+    || /(?:导出|输出|生成|渲染|出).{0,4}(?:mp4|视频|片子|片)/i.test(t);
+}
+
+async function revealExportedFile() {
+  if (!state.selected) return;
+  try {
+    const r = await fetch(`/api/projects/${state.selected.id}/reveal`, { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `${r.status}`);
+  } catch (e) {
+    toast('打开失败：' + (e?.message ?? e), 'error');
+  }
 }
 async function refreshTemplates() {
   const r = await API.templates();
@@ -251,7 +366,18 @@ function renderToolbar() {
     agentStatus.textContent = '○ install';
   }
 
-  exportBtn.disabled = !p || !p.templateId;
+  // Frames-mode projects don't need a template to export — they have
+  // frames[] directly. Single-frame projects still need a template until
+  // the v0.x stub is gone.
+  const hasFrames = !!(p && Array.isArray(p.frames) && p.frames.length > 0);
+  exportBtn.disabled = !p || (!p.templateId && !hasFrames) || !!state.exporting;
+  if (state.exporting) {
+    exportBtn.textContent = state.exportProgress
+      ? `⏵ ${state.exportProgress.pct}% · ${state.exportProgress.stage}`
+      : '⏵ Exporting…';
+  } else {
+    exportBtn.textContent = 'Export MP4';
+  }
   // Re-wire on every render so handlers always match the current DOM.
   wireToolbar();
 }
@@ -282,15 +408,10 @@ function wireToolbar() {
   }
   const exportBtn = document.getElementById('btn-export');
   if (exportBtn) {
-    exportBtn.onclick = async () => {
+    exportBtn.onclick = () => {
       if (!state.selected) return;
-      if (!confirm(`Export "${state.selected.name}" to MP4?\n\n(Real Hyperframes wiring lands in v0.7.)`)) return;
-      const r = await API.exportMp4(state.selected.id);
-      if (r.error) { toast('Export failed: ' + r.error, 'error'); return; }
-      state.selected = r.project;
-      toast('Exported → ' + r.output_path, 'success');
-      renderToolbar();
-      refreshProjects();
+      if (state.exporting) return;
+      startExportStream();
     };
   }
   const nameInput = document.getElementById('proj-name');
@@ -689,6 +810,23 @@ function renderChatLog() {
       }
     };
   });
+  log.querySelectorAll('[data-export-action]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.exportAction;
+      const card = btn.closest('.export-done');
+      const path = card?.querySelector('.export-path code')?.textContent ?? '';
+      if (action === 'reveal') {
+        await revealExportedFile();
+      } else if (action === 'copy' && path) {
+        try {
+          await navigator.clipboard.writeText(path);
+          toast('已复制路径', 'success');
+        } catch (e) {
+          toast('复制失败：' + (e?.message ?? e), 'error');
+        }
+      }
+    });
+  });
   log.scrollTop = log.scrollHeight;
 }
 
@@ -719,6 +857,19 @@ function renderMessage(m, idx) {
   if (m.role === 'system') return `<div class="msg system">${esc(m.content)}</div>`;
   if (m.role === 'preview-event') return `<div class="msg preview-event">${esc(m.content)}</div>`;
   if (m.role === 'thinking') return `<div class="msg thinking">${esc(m.content || 'thinking')}</div>`;
+  if (m.role === 'export-done') {
+    const path = m.content || '';
+    const fname = path.split('/').pop() || 'output.mp4';
+    return `<div class="msg export-done">
+      <div class="export-title">🎬 MP4 ready</div>
+      <div class="export-path"><code>${esc(path)}</code></div>
+      <div class="export-actions">
+        <button class="btn-reveal" data-export-action="reveal">在 Finder 中显示</button>
+        <button class="btn-copy-path" data-export-action="copy">复制路径</button>
+      </div>
+      <div class="export-fname">${esc(fname)}</div>
+    </div>`;
+  }
   // assistant: try each card protocol in turn
   const raw = m.content ?? '';
   const formP = parseHvForm(raw);
@@ -1512,6 +1663,21 @@ async function sendMessage() {
   const text = ta.value.trim();
   const hasAttachments = state.pendingAttachments.length > 0;
   if (!text && !hasAttachments) return;
+
+  // Intent shortcut: if the message is a clear "export to MP4" command
+  // and there's something to export, run the export flow directly
+  // instead of routing through the agent. The agent has nothing useful
+  // to add for a deterministic export action.
+  const p = state.selected;
+  const canExport = !!(p && (p.templateId || (p.frames?.length ?? 0) > 0));
+  if (canExport && !hasAttachments && isExportIntent(text)) {
+    ta.value = '';
+    state.messages.push({ role: 'user', content: text, ts: Date.now() });
+    renderChatLog();
+    startExportStream();
+    return;
+  }
+
   ta.value = '';
   state.composing = true;
   renderComposer();

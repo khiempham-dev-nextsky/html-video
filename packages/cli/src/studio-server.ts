@@ -281,13 +281,68 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         }
       }
 
-      // Export MP4
+      // Export MP4 — streams progress via SSE so the user sees per-frame
+      // recording status during a multi-minute multi-frame export.
       const expMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
       if (expMatch && expMatch[1] && m === 'POST') {
-        const { project, outputPath } = await ctx.orchestrator.exportMp4({
-          projectId: expMatch[1],
+        const projectId = expMatch[1];
+        // The studio uses the SSE branch by default. A plain POST (curl /
+        // tests) gets the legacy blocking response.
+        const wantsStream = (req.headers.accept ?? '').includes('text/event-stream');
+        if (!wantsStream) {
+          try {
+            const { project, outputPath } = await ctx.orchestrator.exportMp4({ projectId });
+            return json(res, 200, { project, output_path: outputPath });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return json(res, 500, { error: msg });
+          }
+        }
+        res.writeHead(200, {
+          'content-type': 'text/event-stream; charset=utf-8',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
         });
-        return json(res, 200, { project, output_path: outputPath });
+        const sse = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+        const t0 = Date.now();
+        try {
+          sse({ type: 'export_started' });
+          const { project, outputPath } = await ctx.orchestrator.exportMp4({
+            projectId,
+            onProgress: (pct, stage) => {
+              sse({ type: 'export_progress', pct, stage });
+            },
+          });
+          const ms = Date.now() - t0;
+          process.stderr.write(
+            `[studio:export] proj=${projectId} done in ${ms}ms → ${outputPath}\n`,
+          );
+          sse({ type: 'export_done', output_path: outputPath, project, elapsed_ms: ms });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`[studio:export] proj=${projectId} failed: ${msg}\n`);
+          sse({ type: 'export_failed', message: msg });
+        }
+        res.end();
+        return;
+      }
+
+      // Reveal an exported file in the OS file browser. macOS: `open -R`
+      // opens Finder with the file selected. Other platforms fall through
+      // to a plain `open` which the OS handles best-effort.
+      const revealMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/reveal$/);
+      if (revealMatch && revealMatch[1] && m === 'POST') {
+        const project = await ctx.orchestrator.load(revealMatch[1]);
+        const target = project.lastOutputMp4Path;
+        if (!target || !existsSync(target)) {
+          return json(res, 404, { error: 'No exported MP4 to reveal' });
+        }
+        const { spawn } = await import('node:child_process');
+        const platform = process.platform;
+        const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'explorer' : 'xdg-open';
+        const args = platform === 'darwin' ? ['-R', target] : [target];
+        spawn(cmd, args, { stdio: 'ignore', detached: true }).unref();
+        return json(res, 200, { ok: true, target, platform });
       }
 
       // Agents (detected on each call; cheap)
