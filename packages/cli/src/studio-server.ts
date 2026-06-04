@@ -202,6 +202,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const project = await ctx.orchestrator.setAgent(
           agentMatch[1],
           (body.agent_id as string) || null,
+          body.agent_model === undefined ? undefined : ((body.agent_model as string) || null),
         );
         return json(res, 200, { project });
       }
@@ -568,6 +569,25 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         return json(res, 200, { agents });
       }
 
+      // Agent models — currently AMR only. Lists the live `vela model list`
+      // catalog so the UI can offer a model picker (deepseek/claude/gpt/…).
+      const modelsMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/models$/);
+      if (modelsMatch && modelsMatch[1] && m === 'GET') {
+        const agentId = modelsMatch[1];
+        if (agentId !== 'amr') return json(res, 200, { models: [] });
+        const def = findAgent(agentId);
+        if (!def) return json(res, 404, { error: `agent "${agentId}" not registered` });
+        const { resolveBin, listAmrModels } = await import('@html-video/runtime');
+        const bin = await resolveBin(def);
+        if (!bin) return json(res, 400, { error: 'vela binary not found' });
+        try {
+          const models = await listAmrModels(bin);
+          return json(res, 200, { models, default: def.defaultModel ?? null });
+        } catch (err) {
+          return json(res, 200, { models: [], error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
       // Agent login — currently AMR/vela only. Spawns `vela login`, which opens
       // the browser for OAuth; we wait for the process to exit (auth complete or
       // cancelled). The user signs in with their OWN Open Design account.
@@ -745,6 +765,8 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         if (!agentDef) {
           return json(res, 400, { error: `agent "${agentId}" not registered` });
         }
+        // Model the user picked for this agent (AMR); undefined → agent default.
+        const agentModel = project.agentModel ?? undefined;
 
         // Append user message to history (with attachment summary)
         const attachmentSummary = attachments.length > 0
@@ -868,6 +890,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               projectId: id,
               projectDir,
               agentDef,
+              agentModel,
               tmpl,
               priorHtml,
               inputs: phaseInfo.inputs,
@@ -897,7 +920,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const handle = spawnAgent({
             def: agentDef,
             prompt: fullPrompt,
-            context: { cwd: projectDir },
+            context: { cwd: projectDir, ...(agentModel && { model: agentModel }) },
             onEvent: (ev) => {
               if (ev.type === 'text') {
                 assistantText += ev.chunk;
@@ -2510,6 +2533,7 @@ interface SplitGenerateArgs {
   projectId: string;
   projectDir: string;
   agentDef: import('@html-video/runtime').AgentDef;
+  agentModel?: string | undefined;
   tmpl: import('@html-video/core').TemplateMetadata | null;
   priorHtml: string;
   inputs: PhaseInputs;
@@ -2523,7 +2547,7 @@ interface SplitGenerateArgs {
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
-  const { ctx, projectId, projectDir, agentDef, tmpl, priorHtml, inputs, attachments, onProgress, onSse } = args;
+  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, onProgress, onSse } = args;
   const collected = inputs.collected ?? {};
   const pickedType = inputs.pickedType ?? '';
   const pickedStyle = inputs.pickedStyle ?? '';
@@ -2616,7 +2640,7 @@ async function runSplitMultiFrameGenerate(
   graphPromptParts.push(`STRICT JSON: the block must be valid JSON. Inside string values do NOT use straight double-quotes ("…") — if you need to quote a term or title, use 「」 or 《》 or single quotes. No trailing commas. No comments.`);
 
   const graphPrompt = graphPromptParts.join('\n');
-  const graphText = await callAgentSimple(agentDef, graphPrompt, projectDir);
+  const graphText = await callAgentSimple(agentDef, graphPrompt, projectDir, agentModel);
   const graphMatch = /```json#content-graph\s*\n([\s\S]*?)```/i.exec(graphText)
     ?? /```json\s*\n([\s\S]*?)```/i.exec(graphText);
   if (!graphMatch || !graphMatch[1]) {
@@ -2706,7 +2730,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     fp.push(`Do NOT return an empty reply. Output the full HTML.`);
 
     const framePrompt = fp.join('\n');
-    let frameText = await callAgentSimple(agentDef, framePrompt, projectDir);
+    let frameText = await callAgentSimple(agentDef, framePrompt, projectDir, agentModel);
     let extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
       ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
 
@@ -2714,7 +2738,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
     if (!extracted) {
       onProgress(`  ↻ 第 ${i + 1} 帧首试为空，重试…`);
       const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
-      frameText = await callAgentSimple(agentDef, retryPrompt, projectDir);
+      frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
       extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
         ?? /<!doctype html[\s\S]*?<\/html>/i.exec(frameText)?.[0];
     }
@@ -2750,12 +2774,13 @@ async function callAgentSimple(
   def: import('@html-video/runtime').AgentDef,
   prompt: string,
   cwd: string,
+  model?: string,
 ): Promise<string> {
   let buf = '';
   const handle = spawnAgent({
     def,
     prompt,
-    context: { cwd },
+    context: { cwd, ...(model && { model }) },
     onEvent: (ev) => {
       if (ev.type === 'text') buf += ev.chunk;
     },

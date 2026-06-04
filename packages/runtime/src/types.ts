@@ -83,6 +83,9 @@ export interface AgentInvokeContext {
   cwd: string;
   /** Allowed working dirs (e.g. project's .html-video/projects/<id>/) */
   extraAllowedDirs?: string[];
+  /** Model override for agents that support selection (e.g. AMR). Falls back to
+   *  the agent's defaultModel when unset. */
+  model?: string;
 }
 
 export interface DetectedAgent {

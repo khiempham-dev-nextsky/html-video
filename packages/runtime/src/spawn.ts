@@ -58,7 +58,7 @@ export function spawnAgent(opts: SpawnOptions): SpawnHandle {
         args: def.buildArgs(prompt, context),
         prompt,
         cwd: context.cwd,
-        ...(def.defaultModel && { model: def.defaultModel }),
+        ...((context.model || def.defaultModel) && { model: context.model || def.defaultModel }),
         ...(def.env && { env: def.env }),
         onEvent: (ev) => onEvent?.(ev),
         signal: ac.signal,

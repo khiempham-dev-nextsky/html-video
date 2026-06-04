@@ -168,9 +168,13 @@ export class ProjectOrchestrator {
     return project;
   }
 
-  async setAgent(projectId: string, agentId: string | null): Promise<Project> {
+  async setAgent(projectId: string, agentId: string | null, agentModel?: string | null): Promise<Project> {
     const project = await this.deps.projects.load(projectId);
     project.agentId = agentId;
+    // Only touch the model when explicitly provided; switching agent clears a
+    // stale model unless a new one is given.
+    if (agentModel !== undefined) project.agentModel = agentModel;
+    else project.agentModel = null;
     await this.deps.projects.save(project);
     return project;
   }

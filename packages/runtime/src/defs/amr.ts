@@ -124,3 +124,33 @@ export const amr: AgentDef = {
     }
   },
 };
+
+/** Preferred ordering — surface the cheap/fast default + flagships first. */
+const AMR_MODEL_RANK: ReadonlyMap<string, number> = new Map(
+  ['deepseek-v4-flash', 'deepseek-v4-pro', 'claude-opus-4.8', 'claude-sonnet-4.6', 'gpt-5.5', 'gemini-3.1-pro-preview']
+    .map((id, i) => [id, i]),
+);
+
+export interface AmrModel { id: string; label: string }
+
+/**
+ * List the live AMR catalog via `vela model list`. Each line is
+ * `<model-id>\t<provider>`; the id is already the link-facing slug AMR accepts
+ * in session/set_model, so no normalization is needed. Ordered preferred-first.
+ */
+export async function listAmrModels(resolvedBin: string): Promise<AmrModel[]> {
+  const { stdout } = await exec(resolvedBin, ['model', 'list'], { timeout: 10_000, maxBuffer: 1024 * 1024 });
+  const seen = new Set<string>();
+  const models: AmrModel[] = [];
+  for (const line of String(stdout).split('\n')) {
+    const id = line.split('\t')[0]?.trim();
+    if (!id || id.startsWith('#') || seen.has(id)) continue;
+    seen.add(id);
+    models.push({ id, label: id });
+  }
+  return models.sort((a, b) => {
+    const ra = AMR_MODEL_RANK.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const rb = AMR_MODEL_RANK.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    return ra - rb || a.id.localeCompare(b.id);
+  });
+}

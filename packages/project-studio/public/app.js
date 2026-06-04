@@ -43,7 +43,7 @@ const API = {
   templates: () => fetch('/api/templates').then(r => r.json()),
   agents: () => fetch('/api/agents').then(r => r.json()),
   setTemplate: (id, tid) => fetch(`/api/projects/${id}/template`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ template_id: tid }) }).then(r => r.json()),
-  setAgent: (id, aid) => fetch(`/api/projects/${id}/agent`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: aid }) }).then(r => r.json()),
+  setAgent: (id, aid, model) => fetch(`/api/projects/${id}/agent`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: aid, ...(model !== undefined && { agent_model: model }) }) }).then(r => r.json()),
   exportMp4: id => fetch(`/api/projects/${id}/export`, { method: 'POST' }).then(r => r.json()),
   getMessages: id => fetch(`/api/projects/${id}/messages`).then(r => r.json()),
   rawHtml: id => fetch(`/api/projects/${id}/raw-html`).then(r => r.ok ? r.text() : null),
@@ -441,6 +441,38 @@ function renderAgentPill() {
   logo.innerHTML = AGENT_LOGOS[currentId] ? `<img src="${esc(AGENT_LOGOS[currentId])}" alt="" />` : '';
   dot.className = 'agent-dot ' + (available ? 'ok' : 'missing');
   pill.title = available ? t('toolbar.agent_ready') : t('settings.agent.unavailable');
+  renderModelSwitch(currentId);
+}
+
+/** Model picker — only for AMR (the one agent with a model catalog). Lazily
+ *  fetches the live list, fills the dropdown, and persists the choice to the
+ *  project so generation drives session/set_model with it. */
+async function renderModelSwitch(currentAgentId) {
+  const wrap = document.getElementById('model-switch');
+  const sel = document.getElementById('model-select');
+  if (!wrap || !sel) return;
+  if (!state.selected || currentAgentId !== 'amr') { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  // Fetch once per session; cache on state.
+  if (!state._amrModels) {
+    try {
+      const data = await fetch('/api/agents/amr/models').then((r) => r.json());
+      state._amrModels = data.models ?? [];
+      state._amrDefaultModel = data.default ?? null;
+    } catch { state._amrModels = []; }
+  }
+  const models = state._amrModels;
+  if (!models.length) { wrap.hidden = true; return; }
+  const chosen = state.selected.agentModel ?? state._amrDefaultModel ?? models[0].id;
+  sel.innerHTML = models.map((m) => `<option value="${esc(m.id)}"${m.id === chosen ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+  sel.onchange = async () => {
+    if (!state.selected) return;
+    try {
+      await API.setAgent(state.selected.id, 'amr', sel.value);
+      state.selected = (await API.getProject(state.selected.id)).project;
+      toast(`✓ ${sel.value}`, 'success');
+    } catch (e) { toast(`${e?.message ?? e}`, 'error'); }
+  };
 }
 
 /** Open/refresh the top-bar agent dropdown. */
