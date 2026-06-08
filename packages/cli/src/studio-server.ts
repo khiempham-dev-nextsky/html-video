@@ -2109,10 +2109,10 @@ function lastCardPickByPhase(history: ChatMessage[], phase: string): string | un
 /** A short user turn that just nudges the flow forward ("continue", "go",
  *  "下一步", "开始生成") rather than supplying video content. Such turns must
  *  not be collected as content — otherwise they end up as on-screen text. */
-function isControlPhrase(t: string): boolean {
+export function isControlPhrase(t: string): boolean {
   const s = t.trim().toLowerCase().replace(/[。.!！~\s]+$/u, '');
-  if (s.length > 12) return false; // real content is longer; keep it
-  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认)$/u.test(s);
+  if (s.length > 14) return false; // real content is longer; keep it
+  return /^(继续|继续(刚刚|上次|之前)的?任务|接着|接着(来|做|生成)|下一步|开始(生成)?|生成(吧)?|go|continue|next|start|ok|好的?|行|走|动手|可以|确认|tiếp tục|tiếp|tiếp đi|bắt đầu( tạo)?|tạo đi|tạo luôn|đồng ý|xác nhận|được rồi|ok nhé)$/u.test(s);
 }
 
 function collectContentTurns(history: ChatMessage[]): string[] {
@@ -2369,9 +2369,9 @@ export function parseFormatReply(text: string): Record<string, string> | undefin
   // --- aspect: explicit ratio (16:9 / 9:16 / 1:1 / 4:5) or a keyword ---
   const ratio = /\b(16\s*[:：]\s*9|9\s*[:：]\s*16|1\s*[:：]\s*1|4\s*[:：]\s*5)\b/.exec(t);
   const ratioNorm = ratio?.[1]?.replace(/\s/g, '').replace('：', ':');
-  if (ratioNorm === '16:9' || /横屏|landscape|宽屏/i.test(t)) out.aspect = '16:9 横屏';
-  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical/i.test(t)) out.aspect = '9:16 手机竖屏';
-  else if (ratioNorm === '1:1' || /方形|square/i.test(t)) out.aspect = '1:1 方形';
+  if (ratioNorm === '16:9' || /横屏|landscape|宽屏|ngang|nằm ngang/i.test(t)) out.aspect = '16:9 横屏';
+  else if (ratioNorm === '9:16' || /竖屏|手机|portrait|vertical|dọc|thẳng đứng|điện thoại/i.test(t)) out.aspect = '9:16 手机竖屏';
+  else if (ratioNorm === '1:1' || /方形|square|vuông/i.test(t)) out.aspect = '1:1 方形';
   else if (ratioNorm === '4:5' || /小红书|xiaohongshu|rednote/i.test(t)) out.aspect = '4:5 小红书';
 
   // --- duration: a number directly tied to seconds (5s / 5秒 / 5 sec) ---
