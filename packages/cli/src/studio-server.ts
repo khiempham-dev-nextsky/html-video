@@ -1895,11 +1895,11 @@ function detectPhase(
     if (last?.metaPhase === 'edit-menu') {
       // Route the menu choice. Match by label keywords (works for clicks, which
       // send the option label, and for free text).
-      if (/风格|style|视觉|配色|换个?样子/i.test(trimmed)) {
+      if (/风格|style|视觉|配色|换个?样子|phong cách|kiểu|giao diện|màu|trông khác/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'style', inputs, postGen: true };
       }
-      if (/时长|时间|duration|长度|快|慢|秒|节奏/i.test(trimmed)) {
+      if (/时长|时间|duration|长度|快|慢|秒|节奏|thời lượng|độ dài|nhanh hơn|chậm hơn|ngắn hơn|dài hơn|bao nhiêu giây|nhịp/i.test(trimmed)) {
         inputs.pickedType = lastCardPickByPhase(history, 'type');
         return { phase: 'format', inputs, postGen: true };
       }
@@ -1936,15 +1936,15 @@ function detectPhase(
       return { phase: 'iterate', inputs: { collected: lastFormSubmission(history) } };
     }
     // Direct shortcuts when the instruction is unambiguous about WHAT to change.
-    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss/i.test(trimmed)) {
+    if (/风格|样式|配色|视觉|主题色|模板|template|style|换个?样子|赛博|极简|杂志|brutal|cyber|swiss|phong cách|kiểu|giao diện|màu|đổi (phong cách|kiểu|màu)|trông khác/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'style', inputs, postGen: true };
     }
-    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒/i.test(trimmed)) {
+    if (/时长|时间|duration|时间长度|节奏|快一点|慢一点|更短|更长|多少秒|thời lượng|độ dài|nhanh hơn|chậm hơn|ngắn hơn|dài hơn|bao nhiêu giây|nhịp/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       return { phase: 'format', inputs, postGen: true };
     }
-    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite/i.test(trimmed)) {
+    if (/文案|内容|主题|改成|换成|重写|讲|介绍|加.{0,4}(信息|数据|卖点)|text|content|rewrite|nội dung|chủ đề|viết lại|đổi thành|giới thiệu|thêm (thông tin|số liệu|điểm nổi bật)/i.test(trimmed)) {
       inputs.pickedType = lastCardPickByPhase(history, 'type');
       inputs.contentTurns = [...collectContentTurns(history), trimmed].filter((s) => !isControlPhrase(s));
       return { phase: 'iterate-content', inputs, postGen: true };
@@ -2014,7 +2014,7 @@ function detectPhase(
   if (prev.kind === 'content-question') {
     // User is replying to content question. Could be (a) more content, or
     // (b) a "skip / I'm done" signal.
-    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道)$/i.test(trimmed)
+    const isSkip = /^(skip|跳过|够了|够|done|next|下一步|ok|好|不知道|bỏ qua|đủ rồi|xong|tiếp|không biết)$/i.test(trimmed)
       || trimmed.length <= 3;
     // "Free rein" answers — the user is handing the subject's details to the
     // agent ("随便生成 / 随便发挥 / 你定 / 都行 / 随机"). These should advance the
@@ -2024,7 +2024,7 @@ function detectPhase(
     // real sentence that merely contains "随便".
     const isFreeRein =
       trimmed.length <= 16 &&
-      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你)/.test(trimmed);
+      /(随便|随机|随意|你定|你来定|你决定|都行|都可以|看着办|自由发挥|发挥|无所谓|任意|随你|tùy|tuỳ|tùy bạn|sao cũng được|gì cũng được|bạn quyết|tự do|ngẫu nhiên)/.test(trimmed);
     // With source material attached there's nothing to collect — advance as
     // soon as the user says anything (the article already is the content).
     if (isSkip || isFreeRein || hasSourceMaterial || hasEnoughContent(history, trimmed)) {
