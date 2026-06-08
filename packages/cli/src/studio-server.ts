@@ -738,6 +738,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         const ct = req.headers['content-type'] ?? '';
         let userText = '';
         let focusFrameId = '';
+        let locale = 'en';
         const attachments: Attachment[] = [];
 
         const project0 = await ctx.orchestrator.load(id);
@@ -748,6 +749,8 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               userText = p.value;
             } else if (p.kind === 'field' && p.name === 'focus_frame_id') {
               focusFrameId = p.value;
+            } else if (p.kind === 'field' && p.name === 'locale') {
+              locale = p.value;
             } else if (p.kind === 'file') {
               const updatedProject = await ctx.orchestrator.addFileAsset(id, p.tmpPath);
               const newAsset = updatedProject.assets[updatedProject.assets.length - 1];
@@ -774,7 +777,10 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           const body = await readBody(req);
           userText = (body.content as string) ?? '';
           focusFrameId = (body.focus_frame_id as string) ?? '';
+          locale = (body.locale as string) ?? 'en';
         }
+        // Normalize to a supported UI locale; anything else falls back to en.
+        if (locale !== 'en' && locale !== 'zh' && locale !== 'vi') locale = 'en';
 
         if (!userText && attachments.length === 0) {
           return json(res, 400, { error: 'content or attachments required' });
@@ -908,6 +914,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           attachments,
           focusFrameId: focusFrameId || undefined,
           openingTopic: resolveOpeningTopic(project, history),
+          locale,
         });
         const phaseInfo = detectPhase(
           history,
@@ -1029,6 +1036,7 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               attachments,
               openingTopic: resolveOpeningTopic(project, history),
               restyleOnly,
+              locale,
               onProgress: (msg) => {
                 assistantText += msg + '\n';
                 textChunks += 1;
@@ -1755,6 +1763,8 @@ interface BuildPromptArgs {
   focusFrameId?: string;
   /** The user's original opening subject, locked across phases. */
   openingTopic?: string;
+  /** UI locale ('en'|'zh'|'vi') — source of truth for the reply + card language. */
+  locale?: string;
 }
 
 interface Attachment {
@@ -2507,7 +2517,7 @@ function isMultiFrameType(pickedType: string): boolean {
 }
 
 function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
-  const { tmpl, exampleHtml, priorHtml, history, userText, attachments, openingTopic } = args;
+  const { tmpl, exampleHtml, priorHtml, history, userText, attachments, openingTopic, locale = 'en' } = args;
 
   // When a template is selected, its own source HTML is the style ground truth —
   // NOT a prior render. Otherwise a project that was previously rendered in some
@@ -3175,6 +3185,8 @@ interface SplitGenerateArgs {
   attachments: Attachment[];
   /** The user's original opening subject, locked across phases. */
   openingTopic?: string;
+  /** UI locale ('en'|'zh'|'vi') — source of truth for the output language. */
+  locale?: string;
   /**
    * Restyle mode: keep the EXISTING content-graph text verbatim and only
    * re-render each frame's HTML in the new style. Skips the Step-1 graph
@@ -3196,7 +3208,7 @@ interface SplitGenerateArgs {
 async function runSplitMultiFrameGenerate(
   args: SplitGenerateArgs,
 ): Promise<{ frameCount: number; intent: string }> {
-  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, restyleOnly, onProgress, onSse } = args;
+  const { ctx, projectId, projectDir, agentDef, agentModel, tmpl, priorHtml, inputs, attachments, openingTopic, restyleOnly, onProgress, onSse, locale = 'en' } = args;
   const collected = inputs.collected ?? {};
   const pickedType = inputs.pickedType ?? '';
   const pickedStyle = inputs.pickedStyle ?? '';

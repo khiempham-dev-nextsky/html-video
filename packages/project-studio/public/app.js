@@ -1346,10 +1346,12 @@ function renderChatLog() {
       const { options } = parseHvOptions(m.content ?? '');
       if (!options) return;
       const picked = options.options[optI];
-      const label = picked?.label ?? '';
-      m.pickedOption = label;
-      // Fire as a new user turn
-      pickAndSend(label);
+      // Send the stable `value` (language-independent logic key) when present,
+      // so localized display labels never break server-side pick detection.
+      // Fall back to the label for older cards that carry no value.
+      const sent = picked?.value ?? picked?.label ?? '';
+      m.pickedOption = picked?.label ?? sent;  // show the label the user clicked
+      pickAndSend(sent);
     };
   });
   // Inline freeform input on each hv-options card
@@ -2499,6 +2501,7 @@ async function sendMessage() {
     if (hasAttachments) {
       const fd = new FormData();
       fd.append('content', text);
+      fd.append('locale', getLocale());
       if (focusFrame) fd.append('focus_frame_id', focusFrame);
       for (const a of state.pendingAttachments) fd.append('file', a.file, a.name);
       // Clear UI attachments before request so user sees them disappear
@@ -2514,6 +2517,7 @@ async function sendMessage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           content: text,
+          locale: getLocale(),
           ...(focusFrame ? { focus_frame_id: focusFrame } : {}),
         }),
       });
