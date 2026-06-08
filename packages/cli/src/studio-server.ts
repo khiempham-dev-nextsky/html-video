@@ -2785,26 +2785,29 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const p: string[] = [];
     p.push(`Generate the HTML video file(s) the user just confirmed.`);
     p.push('');
+    const lang = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+    p.push(outputLanguageDirective(lang));
+    p.push('');
     // Lock the subject to the user's opening request. The content turns below
     // can be as thin as "随机" — without this the video drifts onto that literal
     // word (a "promote Open Design" request became a randomness explainer).
     if (openingTopic) {
       p.push(`VIDEO SUBJECT (LOCKED): the user opened with "${openingTopic}". The video MUST be about THIS subject.`);
-      p.push(`If a content line below is a vague placeholder like "随机 / 随便 / anything / 你定 / whatever", it means "YOU choose the concrete details (selling points, framing, copy) — but the SUBJECT stays "${openingTopic}"". NEVER treat "随机" as the literal topic; do NOT make a video about randomness.`);
+      p.push(`If a content line below is a vague placeholder like "random / anything / whatever / you decide", it means "YOU choose the concrete details (selling points, framing, copy) — but the SUBJECT stays "${openingTopic}"". NEVER treat the placeholder as the literal topic; do NOT make a video about randomness.`);
       p.push('');
     }
     p.push(`Inputs (use these LITERALLY — do NOT make up brand names or facts beyond what is stated):`);
-    p.push(`- 类型 / type: ${pickedType || '(未指定)'}`);
+    p.push(`- type: ${pickedType || '(unspecified)'}`);
     if (contentTurns.length > 0) {
-      p.push(`- 内容 / content (what the user told us in the chat):`);
+      p.push(`- content (what the user told us in the chat):`);
       for (const t of contentTurns) p.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
     } else {
-      p.push(`- 内容 / content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)`);
+      p.push(`- content: (the user did not specify; pick a sensible default that fits the type, but keep it generic — no fake brand names)`);
     }
-    if (styleLabel) p.push(`- 风格 / style: ${styleLabel}`);
-    p.push(`- 画面尺寸: ${aspect} (${resolution})`);
-    p.push(`- 时长: ${collected.duration ?? '?'} 秒`);
-    p.push(`- 帧数: ${collected.frame_count ?? (isMulti ? '4' : '1')}`);
+    if (styleLabel) p.push(`- style: ${styleLabel}`);
+    p.push(`- canvas: ${aspect} (${resolution})`);
+    p.push(`- duration: ${collected.duration ?? '?'}s`);
+    p.push(`- frames: ${collected.frame_count ?? (isMulti ? '4' : '1')}`);
     p.push('');
     if (attachments.length > 0) {
       const { specs, content } = partitionAttachments(attachments);
@@ -2843,7 +2846,7 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
         p.push(`GROUNDING (REQUIRED — the source material above is the script, not decoration):`);
         p.push(`- EVERY node's "text" MUST quote or paraphrase a SPECIFIC fact, name, number, product, or claim from the source material. Pull the real proper nouns (product names, companies, metrics, version numbers) verbatim.`);
         p.push(`- The "synopsis" MUST name the article's actual subject — not "AI/technology trends" or any vague category.`);
-        p.push(`- BANNED: generic motivational filler with no tie to the source ("看清本质", "第一性原理", "复杂表象之下", "you really understand…", "the logic behind…"). If a line would fit ANY article, it is wrong — replace it with something that could ONLY come from THIS source.`);
+        p.push(`- BANNED: generic motivational filler with no tie to the source ("see the essence", "first principles", "beneath the complex surface", "you really understand…", "the logic behind…"). If a line would fit ANY article, it is wrong — replace it with something that could ONLY come from THIS source.`);
         p.push(`- A reader who knows the article must recognize each frame as being about it; a reader who doesn't must learn its specific points.`);
         p.push('');
       }
