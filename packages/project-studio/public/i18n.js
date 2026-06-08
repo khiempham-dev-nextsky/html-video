@@ -15,7 +15,7 @@
  */
 
 export const DEFAULT_LOCALE = 'en';
-export const AVAILABLE_LOCALES = ['en', 'zh'];
+export const AVAILABLE_LOCALES = ['en', 'zh', 'vi'];
 
 const DICT = {
   en: {
@@ -247,8 +247,10 @@ const DICT = {
     'settings.language.subtitle': 'Studio interface language. Re-renders instantly.',
     'settings.language.en': 'English',
     'settings.language.zh': '中文',
+    'settings.language.vi': 'Tiếng Việt',
     'settings.language.en_sub': 'EN',
     'settings.language.zh_sub': 'ZH-CN',
+    'settings.language.vi_sub': 'VI',
 
     'settings.about.title': 'About',
     'settings.about.subtitle': 'html-video — open-source HTML→Video meta-layer for coding agents.',
@@ -496,8 +498,10 @@ const DICT = {
     'settings.language.subtitle': 'Studio 界面语言，切换立即生效。',
     'settings.language.en': 'English',
     'settings.language.zh': '中文',
+    'settings.language.vi': 'Tiếng Việt',
     'settings.language.en_sub': 'EN',
     'settings.language.zh_sub': 'ZH-CN',
+    'settings.language.vi_sub': '越南语',
 
     'settings.about.title': '关于',
     'settings.about.subtitle': 'html-video — 开源的 HTML→视频 meta-layer，为 coding agent 设计。',
@@ -518,6 +522,260 @@ const DICT = {
     'tpl_preview.source_origin': '设计渊源',
     'tpl_preview.source_license': '许可证',
   },
+
+  vi: {
+    'app.empty_pick_create': 'Chọn hoặc tạo một dự án',
+    'app.empty_subtitle':
+      'Mỗi dự án = một video HTML. Chọn template để xem baseline hình ảnh, chat với agent để điều khiển nội dung, sửa text từng khung ở cột giữa, xem kết quả bên phải.',
+    'app.no_project': 'chưa có dự án',
+
+    'sidebar.projects': 'Dự án',
+    'sidebar.new': '+ Mới',
+    'sidebar.collapse': 'Thu gọn thanh bên',
+    'sidebar.empty_list': 'chưa có dự án',
+    'sidebar.menu.rename': '✎ Đổi tên',
+    'sidebar.menu.delete': '🗑 Xoá',
+    'sidebar.rename_prompt': 'Tên dự án mới',
+    'sidebar.delete_confirm': 'Xoá "{name}"? Không thể hoàn tác.',
+
+    'toolbar.template': 'Template',
+    'toolbar.template_pick': 'Tuỳ chọn · Chọn template',
+    'toolbar.agent': 'Agent',
+    'toolbar.model': 'Model',
+    'toolbar.agent_none': '— không —',
+    'toolbar.agent_ready': '● sẵn sàng',
+    'toolbar.agent_install': '○ cài đặt',
+    'toolbar.export_mp4': 'Xuất MP4',
+
+    'composer.placeholder.no_project': 'Chọn một dự án trước…',
+    'composer.placeholder.detecting_agents': 'Mô tả video trong khi chúng tôi dò agent…',
+    'composer.placeholder.no_agent': 'Cài Claude Code (claude CLI) để bật chat…',
+    'composer.placeholder.focus':
+      'Chỉ sửa khung này (bấm ✕ trên chip ở trên để bỏ chọn)…',
+    'composer.placeholder.no_template':
+      'Mô tả một video, hoặc dán link bài viết / repo GitHub để dựng từ đó.',
+    'composer.placeholder.with_template': 'Mô tả video — nội dung, tên, số liệu… hoặc dán link bài viết / repo GitHub.',
+    'composer.hint': 'Cmd / Ctrl + Enter · kéo / dán tệp · thả design.md / frame.md để khoá thương hiệu + chuyển động',
+    'composer.send': 'Gửi',
+    'composer.attach': 'Đính kèm tệp',
+    'composer.focus_chip': 'Chỉ đang sửa khung {order} {fid}',
+    'composer.focus_clear': 'Bỏ chọn khung',
+
+    'chat.empty.title': 'Gửi một tin nhắn để bắt đầu',
+    'chat.empty.body':
+      'Nói cho agent biết bạn muốn gì — một thẻ thương hiệu, một teaser nhiều khung, một poster dữ liệu — và nó sẽ dựng HTML.',
+    'chat.summary.form_submitted': '📋 Đã gửi biểu mẫu',
+    'chat.summary.confirm_generate': '✓ Tạo',
+    'chat.summary.confirm_edit': '✏️ Sửa',
+    'chat.thinking': 'agent đang nghĩ',
+    'chat.still_generating': '⏳ Dự án này vẫn đang tạo ở chế độ nền — kết quả sẽ hiện ở đây khi xong (tải lại preview để làm mới).',
+    'chat.placeholder.gen_html': '📄 *đang tạo HTML…*',
+    'chat.placeholder.plan_graph': '🧭 *đang lên kịch bản…*',
+    'chat.empty_reply':
+      '⚠️ Agent trả về phản hồi rỗng. Thử diễn đạt lại yêu cầu — ví dụ nêu thương hiệu / chủ đề / 1-2 chi tiết cụ thể, hoặc loại khung bạn muốn trước.',
+
+    'preview.placeholder.pick_project': 'Chọn một dự án trước.',
+    'preview.placeholder.pick_template':
+      'Gửi một tin nhắn để tạo HTML đầu tiên.<br>Hoặc chọn template ở trên để bắt đầu nhanh.',
+    'preview.edit_text_on': '✓ Xong chỉnh sửa',
+    'preview.edit_text_off': '✎ Sửa text',
+    'preview.edit_text_title': 'Bấm vào bất kỳ text nào trong preview để sửa',
+    'preview.edit_text_done_title': 'Hoàn tất chỉnh sửa',
+    'preview.reload': '↻ Tải lại preview',
+    'preview.no_hv_text':
+      'Khung này không có text sửa được (HTML thiếu data-hv-text).',
+
+    'frames.label': 'Khung',
+    'frames.view_graph': 'Xem graph',
+    'frames.enhance': '⚡ Remotion',
+    'frames.enhance_hint': 'Dựng khung dữ liệu này bằng Remotion (số chạy, cột lớn dần)',
+    'frames.enhanced_revert': '⚡ Remotion ✓ (hoàn tác)',
+    'frames.enhancing': '⚡ {pct}%…',
+    'enhance.done': '⚡ Đã dựng khung bằng Remotion',
+    'enhance.failed': '⚡ Remotion thất bại: {message}',
+
+    'text_pane.title': 'Text của khung',
+    'text_pane.no_project': 'Chưa có dự án.',
+    'text_pane.empty_with_frames':
+      'Khung này không có text sửa được. Chuyển sang khung khác, hoặc bấm ✎ Sửa text trên canvas.',
+    'text_pane.empty_no_frames':
+      'Chưa có text sửa được. Gửi một tin nhắn để tạo HTML phiên bản đầu, rồi các ô text từng khung sẽ hiện ở đây.',
+    'text_pane.collapse': 'Thu gọn bảng',
+    'text_pane.save_state.idle': '—',
+    'text_pane.save_state.typing': 'đang gõ…',
+    'text_pane.save_state.saving': 'đang lưu…',
+    'text_pane.save_state.saved': 'đã lưu',
+    'text_pane.save_state.error': 'lỗi',
+
+    'export.starting': '⏵ Đang bắt đầu xuất MP4…',
+    'export.button_running': '⏵ {pct}% · {stage}',
+    'export.done_seconds': '✓ Đã xuất MP4 · {seconds}',
+    'export.done_no_seconds': '✓ Đã xuất MP4',
+    'export.failed': '⚠️ Xuất thất bại: {message}',
+    'export.stream_interrupted': 'Luồng xuất bị gián đoạn: {message}',
+    'export.failed_short': 'Xuất thất bại: {message}',
+    'export.title': '🎬 MP4 đã sẵn sàng',
+    'export.reveal': 'Hiện trong Finder',
+    'export.copy_path': 'Sao chép đường dẫn',
+    'export.copied': 'Đã sao chép đường dẫn',
+    'export.copy_failed': 'Sao chép thất bại: {message}',
+    'export.reveal_failed': 'Mở thất bại: {message}',
+
+    'soundtrack.title': '🎵 Thêm nhạc nền & lời thuyết minh',
+    'soundtrack.summary_sub': 'Nhạc AI + lồng tiếng, trộn vào bản xuất của bạn',
+    'soundtrack.optional': 'tuỳ chọn',
+    'soundtrack.hint': 'Nhạc nền + thuyết minh, trộn vào MP4 khi xuất.',
+    'soundtrack.music_label': 'Nhạc nền',
+    'soundtrack.music_placeholder': 'Chọn một phong cách ở trên, hoặc tự mô tả — thể loại, tâm trạng, nhịp độ',
+    'soundtrack.preset_energetic': 'Sôi động',
+    'soundtrack.preset_calm': 'Êm dịu',
+    'soundtrack.preset_tech': 'Công nghệ',
+    'soundtrack.preset_narrative': 'Kể chuyện',
+    'soundtrack.preset_minimal': 'Tối giản',
+    'soundtrack.preset_epic': 'Hoành tráng',
+    'soundtrack.narration_label': 'Thuyết minh / lồng tiếng',
+    'soundtrack.step_write': 'Viết kịch bản (văn bản)',
+    'soundtrack.step_voice': 'Tổng hợp giọng nói (âm thanh)',
+    'soundtrack.editing_frame': '· đang sửa khung {n}/{total}',
+    'soundtrack.draft_frame': '✨ Soạn cho khung này',
+    'soundtrack.draft_all': '✨ Soạn cho tất cả khung',
+    'soundtrack.gen_music': '🎵 Tạo nhạc',
+    'soundtrack.gen_narration': '🎙 Tổng hợp lồng tiếng',
+    'soundtrack.empty_music': 'Chọn hoặc mô tả một phong cách nhạc trước.',
+    'soundtrack.empty_narration': 'Thêm lời thuyết minh trước (✨ để soạn tự động).',
+    'soundtrack.frame_word': 'Khung',
+    'soundtrack.total_word': 'Tổng',
+    'soundtrack.drafting': 'Đang soạn…',
+    'soundtrack.draft_need_frames': 'Hãy tạo video trước',
+    'soundtrack.draft_failed': '⚠️ Soạn thất bại: {message}',
+    'soundtrack.narration_placeholder': 'Mỗi khung một dòng — bấm ✨ để soạn từ video (để trống nếu không cần)',
+    'soundtrack.voice_label': 'Giọng',
+    'soundtrack.voice_male_warm': 'Nam · Ấm',
+    'soundtrack.voice_male_pro': 'Nam · Chuyên nghiệp',
+    'soundtrack.voice_male_deep': 'Nam · Trầm',
+    'soundtrack.voice_female_anchor': 'Nữ · Dẫn chương trình',
+    'soundtrack.voice_female_mature': 'Nữ · Trưởng thành',
+    'soundtrack.voice_female_sweet': 'Nữ · Ngọt ngào',
+    'soundtrack.fit_durations': '⇄ Khớp thời lượng theo thuyết minh',
+    'soundtrack.fit_hint': 'Căn lại nhịp mỗi khung theo lượng thuyết minh',
+    'soundtrack.fitting': 'Đang khớp…',
+    'soundtrack.fitted': '✓ Đã khớp thời lượng khung theo thuyết minh · tổng {sec}s',
+    'soundtrack.fit_failed': 'Không thể khớp thời lượng',
+    'soundtrack.music_volume': 'Âm lượng nhạc',
+    'soundtrack.narration_volume': 'Âm lượng thuyết minh',
+    'soundtrack.generate': 'Tạo soundtrack',
+    'soundtrack.generating': 'Đang tạo…',
+    'soundtrack.clear': 'Xoá',
+    'soundtrack.starting': '⏵ Đang tạo soundtrack…',
+    'soundtrack.progress_music': '⏵ Đang tạo nhạc nền…',
+    'soundtrack.progress_narration': '⏵ Đang tạo thuyết minh…',
+    'soundtrack.done': '✓ Soundtrack đã sẵn sàng — sẽ được trộn vào khi xuất',
+    'soundtrack.failed': '⚠️ Soundtrack thất bại: {message}',
+    'soundtrack.music_ready': 'Nhạc',
+    'soundtrack.narration_ready': 'Thuyết minh',
+    'soundtrack.empty': 'Nhập mô tả nhạc và/hoặc lời thuyết minh trước.',
+
+    'graph.title': 'Content graph',
+    'graph.download': '⬇ Tải JSON',
+    'graph.close': '✕',
+    'graph.empty': '(dự án này chưa có graph)',
+    'graph.error': 'lỗi tải graph: {message}',
+
+    'gallery.title': 'Chọn một template',
+    'gallery.close': '✕',
+
+    'modal.new.title': 'Dự án mới',
+    'modal.new.name_label': 'Tên',
+    'modal.new.name_placeholder': 'vd: teaser ra mắt nexu-io',
+    'modal.new.intent_label': 'Mục đích (tuỳ chọn)',
+    'modal.new.intent_placeholder': 'Mô tả một dòng về nội dung video này',
+    'modal.new.cancel': 'Huỷ',
+    'modal.new.create': 'Tạo',
+    'modal.new.name_required': 'Cần nhập tên',
+    'modal.new.created': 'Đã tạo "{name}"',
+    'modal.new.failed': 'Tạo dự án thất bại',
+
+    'language.label': 'Ngôn ngữ',
+
+    'settings.title': 'Cài đặt',
+    'settings.tab.agent': 'Agent',
+    'settings.tab.audio': 'Âm thanh',
+    'settings.tab.language': 'Ngôn ngữ',
+    'settings.tab.about': 'Giới thiệu',
+
+    'settings.audio.title': 'Âm thanh · MiniMax',
+    'settings.audio.subtitle': 'API key để tạo soundtrack (nhạc nền + thuyết minh).',
+    'settings.audio.loading': 'Đang kiểm tra…',
+    'settings.audio.api_key': 'API key',
+    'settings.audio.api_key_placeholder': 'Dán MiniMax API key của bạn',
+    'settings.audio.region': 'Vùng API',
+    'settings.audio.region_intl': '🌐 Quốc tế · api.minimax.io',
+    'settings.audio.region_cn': '🇨🇳 Trung Quốc · api.minimaxi.com',
+    'settings.audio.base_url': 'Base URL',
+    'settings.audio.save': 'Lưu',
+    'settings.audio.clear': 'Xoá',
+    'settings.audio.configured': '✓ Đã cấu hình · {key} · từ {source}',
+    'settings.audio.not_configured': 'Chưa cấu hình MiniMax key.',
+    'settings.audio.source_config': 'Cài đặt',
+    'settings.audio.source_env': 'biến môi trường',
+    'settings.audio.saving': 'Đang lưu…',
+    'settings.audio.saved': '✓ Đã lưu',
+    'settings.audio.save_failed': 'Lưu thất bại: {message}',
+    'settings.audio.need_key': 'Nhập API key trước.',
+    'settings.audio.hint': 'Lưu cục bộ trong .html-video/media-config.json. Chọn vùng khớp với key của bạn — key api.minimax.io (Quốc tế) sẽ KHÔNG dùng được với api.minimaxi.com (Trung Quốc) và ngược lại. Host cũ api.minimaxi.chat đã ngừng.',
+
+    'settings.agent.title': 'Agent',
+    'settings.agent.subtitle': 'Chọn runtime biến chat của bạn thành HTML.',
+    'settings.agent.mode.local': 'CLI cục bộ',
+    'settings.agent.mode.byok': 'BYOK (API)',
+    'settings.agent.detected': 'Agent phát hiện ({count})',
+    'settings.agent.test': 'Kiểm tra',
+    'settings.agent.testing': 'Đang kiểm tra…',
+    'settings.agent.test_ok': 'OK · {ms}ms · {bytes}B',
+    'settings.agent.test_fail': 'Thất bại: {message}',
+    'settings.agent.empty_reply': 'Thất bại: agent trả về phản hồi rỗng',
+    'settings.agent.use': 'Dùng',
+    'settings.agent.in_use': 'Đang dùng',
+    'settings.agent.unavailable': 'Chưa cài',
+    'agent.sign_in': 'Đăng nhập',
+    'agent.signing_in': 'Đang đăng nhập…',
+    'agent.signed_in': '✓ Đã đăng nhập AMR',
+    'agent.sign_in_failed': 'Đăng nhập thất bại',
+    'agent.recommended': 'Khuyến nghị · một lần đăng nhập, nhiều model',
+    'settings.agent.byok.intro': 'Dùng API key Anthropic / OpenRouter của riêng bạn. Đọc từ biến môi trường:',
+    'settings.agent.byok.env_key': 'ANTHROPIC_API_KEY hoặc ANTHROPIC_AUTH_TOKEN',
+    'settings.agent.byok.env_base': 'ANTHROPIC_BASE_URL (tuỳ chọn, mặc định api.anthropic.com)',
+    'settings.agent.rescan': '↻ Quét lại',
+    'settings.agent.rescanned': 'Đã quét lại',
+
+    'settings.language.title': 'Ngôn ngữ',
+    'settings.language.subtitle': 'Ngôn ngữ giao diện studio. Đổi là cập nhật ngay.',
+    'settings.language.en': 'English',
+    'settings.language.zh': '中文',
+    'settings.language.vi': 'Tiếng Việt',
+    'settings.language.en_sub': 'EN',
+    'settings.language.zh_sub': 'ZH-CN',
+    'settings.language.vi_sub': 'VI',
+
+    'settings.about.title': 'Giới thiệu',
+    'settings.about.subtitle': 'html-video — meta-layer HTML→Video mã nguồn mở cho coding agent.',
+    'settings.about.version': 'Phiên bản',
+    'settings.about.repo': 'Repo',
+    'settings.about.discord': 'Discord',
+    'settings.about.license': 'Giấy phép',
+    'settings.about.related': 'Liên quan',
+
+    'toolbar.settings': 'Cài đặt',
+
+    'tpl_preview.cancel': 'Huỷ',
+    'tpl_preview.use': 'Dùng template này',
+    'tpl_preview.replace_confirm': 'Thay template hiện tại bằng "{name}"? Nội dung preview hiện có vẫn giữ — agent có thể dựng lại ở lần chat sau.',
+    'tpl_preview.applied': 'Template: {name}',
+    'tpl_preview.fps_dur': '{fps}fps · {duration}s · {aspect}',
+    'tpl_preview.source_skill': 'Phỏng theo',
+    'tpl_preview.source_origin': 'Nguồn gốc thiết kế',
+    'tpl_preview.source_license': 'Giấy phép',
+  },
 };
 
 const STORAGE_KEY = 'hv.studio.locale';
@@ -530,7 +788,16 @@ function resolveInitialLocale() {
   } catch {
     /* localStorage unavailable */
   }
-  // Default is English regardless of nav.language. Joey explicitly asked.
+  // Auto-detect from the browser locale (vi-VN → vi, zh-CN → zh), else default.
+  // Behavior change (was: always DEFAULT_LOCALE) to support Vietnamese users
+  // without a manual switch; the Settings → Language picker still overrides.
+  try {
+    const navLang = (navigator.language || '').toLowerCase();
+    const prefix = navLang.split('-')[0];
+    if (AVAILABLE_LOCALES.includes(prefix)) return prefix;
+  } catch {
+    /* navigator unavailable */
+  }
   return DEFAULT_LOCALE;
 }
 
