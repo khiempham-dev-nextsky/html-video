@@ -2244,6 +2244,46 @@ function lastAssistantAskedFormat(history: ChatMessage[]): boolean {
   return false;
 }
 
+/** Human name per detected language, used in the OUTPUT LANGUAGE prompt directive. */
+const LANG_NAME: Record<string, string> = {
+  vi: 'Vietnamese (Tiếng Việt)',
+  zh: 'Chinese (中文)',
+  en: 'English',
+};
+
+/**
+ * Detect the language the USER is chatting in — from their own messages only,
+ * never the pasted source material (the user's chat language always wins; see
+ * spec §2 decision #3). Drives both the OUTPUT LANGUAGE prompt directive and the
+ * server-side progress strings.
+ *
+ *   vi — any Vietnamese-specific letter/diacritic present (high precision; these
+ *        code points appear in neither zh nor en). Toneless Vietnamese falls
+ *        through to `en`, which is an acceptable neutral default.
+ *   zh — Han characters present.
+ *   en — default / ambiguous / empty (NEVER zh by default — that was the bug).
+ */
+export function detectUserLang(text: string): 'vi' | 'zh' | 'en' {
+  const s = text || '';
+  if (/[ăâđêôơưĂÂĐÊÔƠƯàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵÀÁẢÃẠẰẮẲẴẶẦẤẨẪẬÈÉẺẼẸỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌỒỐỔỖỘỜỚỞỠỢÙÚỦŨỤỪỨỬỮỰỲÝỶỸỴ]/.test(s)) {
+    return 'vi';
+  }
+  if (/[一-鿿]/.test(s)) return 'zh';
+  return 'en';
+}
+
+/** The OUTPUT LANGUAGE directive injected into every content-generation prompt. */
+export function outputLanguageDirective(lang: 'vi' | 'zh' | 'en'): string {
+  const name = LANG_NAME[lang] ?? LANG_NAME.en;
+  return [
+    `OUTPUT LANGUAGE (REQUIRED): Write every visible text node, the synopsis, and`,
+    `all data labels/units in ${name} — the same language the user wrote their`,
+    `request in. The source material may be in another language; translate its`,
+    `facts, names, and numbers into ${name}. Keep proper nouns, brand/product`,
+    `names, and code identifiers in their original script. Do NOT default to Chinese.`,
+  ].join(' ');
+}
+
 /**
  * Best-effort parse of format params from a FREE-TEXT user reply.
  *
