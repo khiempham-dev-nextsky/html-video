@@ -2284,6 +2284,49 @@ export function outputLanguageDirective(lang: 'vi' | 'zh' | 'en'): string {
   ].join(' ');
 }
 
+/** Server-side progress strings, keyed by locale. Mirrors the frontend i18n. */
+const SERVER_STRINGS: Record<string, Record<string, string>> = {
+  en: {
+    'progress.reuse_existing': '✓ Reusing existing copy: {n} frames',
+    'progress.planning': '📋 Planning a {n}-frame storyboard…',
+    'progress.plan_done': '✓ Storyboard planned: {n} frames ({intent})',
+    'progress.frame_gen': '🎬 Generating frame {i}/{total} ({id})…',
+    'progress.frame_retry': '  ↻ Frame {i} came back empty, retrying…',
+    'progress.frame_remotion': '  ⚡ Rendering Remotion motion for frame {i} (rolling numbers / growing bars)…',
+    'progress.frame_remotion_fail': '  ⚠️ Frame {i} could not be enhanced with Remotion (falling back to static HTML): {msg}',
+    'progress.frame_done': '  ✓ Frame {i}/{total} done ({id})',
+  },
+  vi: {
+    'progress.reuse_existing': '✓ Dùng lại nội dung sẵn có: {n} khung',
+    'progress.planning': '📋 Đang lên kịch bản {n} khung…',
+    'progress.plan_done': '✓ Đã lên kịch bản: {n} khung ({intent})',
+    'progress.frame_gen': '🎬 Đang tạo khung {i}/{total} ({id})…',
+    'progress.frame_retry': '  ↻ Khung {i} trả về rỗng, đang thử lại…',
+    'progress.frame_remotion': '  ⚡ Đang dựng hiệu ứng Remotion cho khung {i} (số chạy / cột lớn dần)…',
+    'progress.frame_remotion_fail': '  ⚠️ Khung {i} không tăng cường được bằng Remotion (quay về HTML tĩnh): {msg}',
+    'progress.frame_done': '  ✓ Khung {i}/{total} xong ({id})',
+  },
+  zh: {
+    'progress.reuse_existing': '✓ 沿用现有文案：{n} 帧',
+    'progress.planning': '📋 规划 {n} 帧的故事板…',
+    'progress.plan_done': '✓ 故事板规划完成：{n} 帧 ({intent})',
+    'progress.frame_gen': '🎬 生成第 {i}/{total} 帧 ({id})…',
+    'progress.frame_retry': '  ↻ 第 {i} 帧首试为空，重试…',
+    'progress.frame_remotion': '  ⚡ 第 {i} 帧渲染 Remotion 动效 (数字滚动 / 柱子生长)…',
+    'progress.frame_remotion_fail': '  ⚠️ 第 {i} 帧无法用 Remotion 增强（回落静态 HTML）：{msg}',
+    'progress.frame_done': '  ✓ 第 {i}/{total} 帧完成 ({id})',
+  },
+};
+
+/** Translate a server progress key for `lang`, substituting `{param}` tokens. */
+export function tServer(lang: string, key: string, params?: Record<string, string | number>): string {
+  const en = SERVER_STRINGS.en!;
+  const dict = SERVER_STRINGS[lang] ?? en;
+  let s = dict[key] ?? en[key] ?? key;
+  if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, String(v));
+  return s;
+}
+
 /**
  * Best-effort parse of format params from a FREE-TEXT user reply.
  *
