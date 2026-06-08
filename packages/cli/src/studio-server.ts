@@ -2516,7 +2516,29 @@ function isMultiFrameType(pickedType: string): boolean {
   return !single;
 }
 
+/**
+ * Public entry: builds the phase prompt, then prepends a RESPONSE LANGUAGE
+ * directive so the agent's prose (opening line, questions, confirm summary)
+ * comes out in the UI locale instead of defaulting to Chinese. Card JSON blocks
+ * are pre-localized in code (the agent is told to copy them verbatim), so the
+ * directive deliberately exempts them.
+ */
 function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
+  const prompt = buildPromptInner(args);
+  const locale = args.locale ?? 'en';
+  // English scaffolding already reads as English; the generate phase carries its
+  // own frame-content OUTPUT LANGUAGE directive, so don't double-stamp it.
+  if (locale === 'en' || prompt.includes('OUTPUT LANGUAGE (REQUIRED)')) return prompt;
+  const name = LANG_NAME[locale] ?? LANG_NAME.en;
+  return [
+    `IMPORTANT — RESPONSE LANGUAGE: Write ALL of your own prose this turn — sentences, questions, explanations, friendly lines — in ${name}.`,
+    `EXCEPTION: copy any fenced \`\`\`hv-options / \`\`\`hv-form / \`\`\`hv-confirm JSON block EXACTLY as written below — do NOT translate, reword, or change its keys or values.`,
+    '',
+    prompt,
+  ].join('\n');
+}
+
+function buildPromptInner(args: BuildPromptArgs): string {
   const { tmpl, exampleHtml, priorHtml, history, userText, attachments, openingTopic, locale = 'en' } = args;
 
   // When a template is selected, its own source HTML is the style ground truth —
@@ -2857,7 +2879,8 @@ function buildHtmlGenerationPrompt(args: BuildPromptArgs): string {
     const p: string[] = [];
     p.push(`Generate the HTML video file(s) the user just confirmed.`);
     p.push('');
-    const lang = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+    const detectedLang = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+    const lang = detectedLang !== 'en' ? detectedLang : (locale as 'vi' | 'zh' | 'en');
     p.push(outputLanguageDirective(lang));
     p.push('');
     // Lock the subject to the user's opening request. The content turns below
@@ -3262,10 +3285,13 @@ async function runSplitMultiFrameGenerate(
     ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
     : pickedStyle;
 
-  // Language the user is chatting in — drives the OUTPUT LANGUAGE directive
-  // below AND the progress strings. Source material is deliberately excluded:
-  // the user's chat language wins (spec §2 #3).
-  const lang = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+  // Frame-content language. A strong vi/zh signal in the user's chat wins
+  // (someone typing Chinese gets Chinese frames); otherwise fall back to the
+  // UI locale — this covers the bare-URL case (no language signal in the text)
+  // so a Vietnamese-UI user still gets Vietnamese frames. Source material is
+  // deliberately excluded from detection (the user's language wins).
+  const detected = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+  const lang = detected !== 'en' ? detected : (locale as 'vi' | 'zh' | 'en');
 
   // ---- Step 1: obtain the content graph ----
   let graph: import('@html-video/content-graph').ContentGraph;
@@ -3277,10 +3303,10 @@ async function runSplitMultiFrameGenerate(
       throw new Error('restyle requested but the project has no existing storyboard to reuse');
     }
     graph = existing as import('@html-video/content-graph').ContentGraph;
-    onProgress(tServer(lang, 'progress.reuse_existing', { n: graph.nodes.length }));
+    onProgress(tServer(locale, 'progress.reuse_existing', { n: graph.nodes.length }));
     onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   } else {
-  onProgress(tServer(lang, 'progress.planning', { n: frameCountReq }));
+  onProgress(tServer(locale, 'progress.planning', { n: frameCountReq }));
   const graphPromptParts: string[] = [];
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
   graphPromptParts.push('');
@@ -3379,7 +3405,7 @@ async function runSplitMultiFrameGenerate(
     throw new Error('graph has no nodes');
   }
   await ctx.orchestrator.writeContentGraph(projectId, graph);
-  onProgress(tServer(lang, 'progress.plan_done', { n: graph.nodes.length, intent: graph.intent }));
+  onProgress(tServer(locale, 'progress.plan_done', { n: graph.nodes.length, intent: graph.intent }));
   onSse({ type: 'plan_ready', frame_count: graph.nodes.length, intent: graph.intent });
   }
 
@@ -3387,7 +3413,7 @@ async function runSplitMultiFrameGenerate(
   for (let i = 0; i < graph.nodes.length; i++) {
     const node = graph.nodes[i]!;
     const nodeId = node.id;
-    onProgress(tServer(lang, 'progress.frame_gen', { i: i + 1, total: graph.nodes.length, id: nodeId }));
+    onProgress(tServer(locale, 'progress.frame_gen', { i: i + 1, total: graph.nodes.length, id: nodeId }));
     onSse({ type: 'frame_started', node_id: nodeId, order: i, total: graph.nodes.length });
 
     const frameContext = describeNode(node);
@@ -3473,7 +3499,7 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
 
     // One retry on empty: shorter prompt, just the skeleton call.
     if (!extracted) {
-      onProgress(tServer(lang, 'progress.frame_retry', { i: i + 1 }));
+      onProgress(tServer(locale, 'progress.frame_retry', { i: i + 1 }));
       const retryPrompt = `Output ONE complete HTML video frame in a fenced \`\`\`html block. Frame purpose: ${frameContext}. Style: ${styleLabel || 'tasteful default'}. Resolution: ${resolution}. ${contentTurns.length ? `Content: ${contentTurns.join(' / ').slice(0, 200)}` : ''} \n\nBegin your reply with \`\`\`html. Inline CSS, opens with animation, tag text with data-hv-text. No prose.`;
       frameText = await callAgentSimple(agentDef, retryPrompt, projectDir, agentModel);
       extracted = /```html\s*\n([\s\S]*?)```/i.exec(frameText)?.[1]?.trim()
@@ -3495,19 +3521,19 @@ h1{font-size:8vw;letter-spacing:-.03em;animation:in 1s ease forwards;opacity:0;t
         // frame is flagged remotion but has no previewMp4Path, so the studio
         // tries to play a <video> that 404s → black thumbnail + preview.
         await ctx.orchestrator.enhanceFrameNative(projectId, nodeId, 'frame-data-rollup');
-        onProgress(tServer(lang, 'progress.frame_remotion', { i: i + 1 }));
+        onProgress(tServer(locale, 'progress.frame_remotion', { i: i + 1 }));
         await ctx.orchestrator.renderFrameNativePreview({ projectId, graphNodeId: nodeId });
         onSse({ type: 'frame_enhanced', node_id: nodeId, order: i });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         process.stderr.write(`[studio:split-generate] proj=${projectId} frame=${nodeId} enhance skipped: ${msg}\n`);
-        onProgress(tServer(lang, 'progress.frame_remotion_fail', { i: i + 1, msg }));
+        onProgress(tServer(locale, 'progress.frame_remotion_fail', { i: i + 1, msg }));
         // Revert the engine flag so the frame falls back to its hyperframes HTML
         // (the <iframe> path) instead of showing a broken <video>.
         try { await ctx.orchestrator.unenhanceFrame(projectId, nodeId); } catch { /* ignore */ }
       }
     }
-    onProgress(tServer(lang, 'progress.frame_done', { i: i + 1, total: graph.nodes.length, id: nodeId }));
+    onProgress(tServer(locale, 'progress.frame_done', { i: i + 1, total: graph.nodes.length, id: nodeId }));
     onSse({ type: 'frame_done', node_id: nodeId, order: i, total: graph.nodes.length });
   }
 
