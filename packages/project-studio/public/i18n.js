@@ -55,6 +55,15 @@ const DICT = {
     'composer.attach': 'Attach file',
     'composer.focus_chip': 'Editing only frame {order} {fid}',
     'composer.focus_clear': 'Clear focus',
+    'form.drop_hint': '📎 Drag / paste / choose files as material (logo, screenshot, CSV… optional)',
+    'form.add_file': '+ Add file',
+    'form.submit': 'Submit ↵',
+    'confirm.generate': '✓ Start generating',
+    'confirm.edit': '✏️ Edit',
+    'toast.save_failed': 'Save failed: {message}',
+    'toast.saved_changes': 'Saved {changed} change(s)',
+    'toast.error_generic': 'Error: {message}',
+    'toast.init_failed': 'init failed: {message}',
 
     'chat.empty.title': 'Send a message to start',
     'chat.empty.body':
@@ -307,6 +316,15 @@ const DICT = {
     'composer.attach': '附加文件',
     'composer.focus_chip': '仅修改第 {order} 帧 {fid}',
     'composer.focus_clear': '清除',
+    'form.drop_hint': '📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）',
+    'form.add_file': '+ 添加文件',
+    'form.submit': '提交 ↵',
+    'confirm.generate': '✓ 开始生成',
+    'confirm.edit': '✏️ 修改',
+    'toast.save_failed': '保存失败：{message}',
+    'toast.saved_changes': '已保存 {changed} 处修改',
+    'toast.error_generic': '错误：{message}',
+    'toast.init_failed': 'init 失败：{message}',
 
     'chat.empty.title': '发条消息开始',
     'chat.empty.body':
@@ -560,6 +578,15 @@ const DICT = {
     'composer.attach': 'Đính kèm tệp',
     'composer.focus_chip': 'Chỉ đang sửa khung {order} {fid}',
     'composer.focus_clear': 'Bỏ chọn khung',
+    'form.drop_hint': '📎 Kéo thả / dán / chọn tệp làm tư liệu (logo, ảnh chụp, CSV… tuỳ chọn)',
+    'form.add_file': '+ Thêm tệp',
+    'form.submit': 'Gửi ↵',
+    'confirm.generate': '✓ Bắt đầu tạo',
+    'confirm.edit': '✏️ Sửa',
+    'toast.save_failed': 'Lưu thất bại: {message}',
+    'toast.saved_changes': 'Đã lưu {changed} thay đổi',
+    'toast.error_generic': 'Lỗi: {message}',
+    'toast.init_failed': 'init thất bại: {message}',
 
     'chat.empty.title': 'Gửi một tin nhắn để bắt đầu',
     'chat.empty.body':

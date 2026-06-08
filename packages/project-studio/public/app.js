@@ -1792,14 +1792,14 @@ function renderFormCard(form, submitted, msgIdx) {
     : '';
   const dropHtml = allowAttachments && !submitted ? `
     <div class="form-attachments" data-form-msg="${msgIdx}">
-      <div class="form-drop-hint">📎 拖拽 / 粘贴 / 选择文件作为素材（logo、截图、数据 CSV…可选）</div>
+      <div class="form-drop-hint">${t('form.drop_hint')}</div>
       <div class="form-attachment-list" id="form-att-${msgIdx}"></div>
       <input type="file" id="form-file-${msgIdx}" multiple style="display:none" />
-      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">+ 添加文件</button>
+      <button type="button" class="form-attach-btn" data-form-msg="${msgIdx}">${t('form.add_file')}</button>
     </div>` : '';
   const actionsHtml = submitted ? '' : `
     <div class="form-actions">
-      <button class="form-submit" data-form-msg="${msgIdx}">提交 ↵</button>
+      <button class="form-submit" data-form-msg="${msgIdx}">${t('form.submit')}</button>
     </div>`;
   return `<div class="form-card${submitted ? ' submitted' : ''}">
     <div class="form-title">${esc(title)}</div>
@@ -1825,8 +1825,8 @@ function renderConfirmCard(confirm, resolved, msgIdx) {
   }).join('');
   const actionsHtml = resolved ? '' : `
     <div class="confirm-actions">
-      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">✓ 开始生成</button>` : ''}
-      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">✏️ 修改</button>` : ''}
+      ${actions.includes('generate') ? `<button class="confirm-go" data-confirm-msg="${msgIdx}" data-action="generate">${t('confirm.generate')}</button>` : ''}
+      ${actions.includes('edit') ? `<button class="confirm-edit" data-confirm-msg="${msgIdx}" data-action="edit">${t('confirm.edit')}</button>` : ''}
     </div>`;
   return `<div class="confirm-card${resolved ? ' resolved' : ''}">
     <div class="confirm-title">${esc(title)}</div>
@@ -2066,7 +2066,7 @@ async function commitInlineTextEdits(iframe) {
     if (!r.ok) throw new Error(`fetch failed ${r.status}`);
     serverHtml = await r.text();
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('toast.save_failed', { message: e.message }), 'error');
     return;
   }
   const parser = new DOMParser();
@@ -2099,7 +2099,7 @@ async function commitInlineTextEdits(iframe) {
       body: JSON.stringify({ html: out }),
     });
     if (!r.ok) throw new Error(`save failed ${r.status}`);
-    toast(`已保存 ${changed} 处修改`, 'success');
+    toast(t('toast.saved_changes', { changed }), 'success');
     // Refresh local project state so frames-strip thumbnails cache-bust.
     if (fid) {
       const pr = await API.getProject(projectId);
@@ -2107,7 +2107,7 @@ async function commitInlineTextEdits(iframe) {
       renderFramesStrip();
     }
   } catch (e) {
-    toast(`保存失败：${e.message}`, 'error');
+    toast(t('toast.save_failed', { message: e.message }), 'error');
   }
 }
 
@@ -3203,6 +3203,10 @@ function renderSettingsLanguage(panel) {
         <div class="lang-name">${esc(t('settings.language.zh'))}</div>
         <div class="lang-sub">${esc(t('settings.language.zh_sub'))}</div>
       </button>
+      <button data-lang="vi" class="${cur === 'vi' ? 'active' : ''}">
+        <div class="lang-name">${esc(t('settings.language.vi'))}</div>
+        <div class="lang-sub">${esc(t('settings.language.vi_sub'))}</div>
+      </button>
     </div>
   `;
   panel.querySelectorAll('[data-lang]').forEach((btn) => {
@@ -3242,14 +3246,14 @@ function esc(s) {
 
 window.addEventListener('error', (e) => {
   console.error('[hv-studio] uncaught:', e.error || e.message);
-  try { toast(`错误：${e.error?.message || e.message}`, 'error'); } catch {}
+  try { toast(t('toast.error_generic', { message: e.error?.message || e.message }), 'error'); } catch {}
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[hv-studio] unhandled rejection:', e.reason);
-  try { toast(`错误：${e.reason?.message || e.reason}`, 'error'); } catch {}
+  try { toast(t('toast.error_generic', { message: e.reason?.message || e.reason }), 'error'); } catch {}
 });
 init().catch((e) => {
   console.error('[hv-studio] init failed:', e);
-  try { toast(`init 失败：${e.message}`, 'error'); } catch {}
+  try { toast(t('toast.init_failed', { message: e.message }), 'error'); } catch {}
 });
 
