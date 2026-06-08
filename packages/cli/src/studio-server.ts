@@ -2357,6 +2357,141 @@ export function tServer(lang: string, key: string, params?: Record<string, strin
 }
 
 /**
+ * Display strings for the interactive cards (hv-options / hv-form / hv-confirm)
+ * the server embeds in prompts. Keyed by locale. zh values are the originals, so
+ * existing Chinese users see no change. Card `value`/logic keys are NOT in here —
+ * those stay canonical so pick-detection is language-independent; only the
+ * human-visible question/label/hint/title text is localized.
+ */
+const CARD_STRINGS: Record<string, Record<string, string>> = {
+  en: {
+    'editmenu.q': 'What do you want to change?',
+    'editmenu.style.l': '🎨 Restyle', 'editmenu.style.h': 'Keep the content, swap the visual style',
+    'editmenu.content.l': '✏️ Edit content', 'editmenu.content.h': 'Change copy / topic / rewrite the script',
+    'editmenu.duration.l': '⏱️ Change timing', 'editmenu.duration.h': 'Adjust per-frame duration / pacing',
+    'type.q': 'What kind of content?',
+    'type.single.l': 'Single title card', 'type.single.h': 'logo / cover / one frame - 5-10s',
+    'type.multi.l': 'Multi-frame teaser', 'type.multi.h': 'product / event teaser, 3-6 frames',
+    'type.data.l': 'Data poster', 'type.data.h': '1-2 key numbers, social-viral style',
+    'type.concept.l': 'Concept explainer', 'type.concept.h': 'a few frames to explain one idea / feature',
+    'style.q': 'How should it look?',
+    'style.cyber.h': 'neon / glitch / high contrast',
+    'style.swiss.h': 'grid / sans-serif / whitespace',
+    'style.warm.h': 'paper / serif / warm tones',
+    'style.mono.h': 'black & white / blocky / bold',
+    'style.template.l': 'Pick from a design template', 'style.template.h': 'choose a ready-made template above',
+    'needtemplate.q': 'Pick a template from the top «Template» menu, then click continue below; or choose a built-in style:',
+    'needtemplate.continue.l': 'I picked a template, continue', 'needtemplate.continue.h': 'generate with the template selected above',
+    'format.title.edit': 'Tweak the format',
+    'format.title.multi': 'Last step: size / per-frame duration / frames',
+    'format.title.single': 'Last step: pick a size / duration',
+    'format.f.aspect': 'Canvas size',
+    'format.f.perframe': 'Per-frame duration (s)', 'format.f.perframe.h': 'total = per-frame × frames',
+    'format.f.frames': 'Frames',
+    'format.f.remotion': '⚡ Remotion for data frames', 'format.f.remotion.h': 'render data frames natively with Remotion (rolling numbers / growing bars); other frames stay on Hyperframes',
+    'format.f.remotion.off': 'Off', 'format.f.remotion.on': 'On · Remotion',
+    'format.f.duration': 'Duration (s)',
+    'aspect.169': '16:9 landscape', 'aspect.916': '9:16 vertical', 'aspect.11': '1:1 square', 'aspect.45': '4:5 portrait',
+    'confirm.q': 'Start generating with this?',
+    'confirm.row.type': 'Type', 'confirm.row.content': 'Content', 'confirm.row.style': 'Style', 'confirm.row.template': 'Template',
+    'confirm.row.aspect': 'Size', 'confirm.row.duration': 'Duration', 'confirm.row.frame_count': 'Frames', 'confirm.row.per_frame': 'Per-frame',
+    'confirm.row.total': 'Total', 'confirm.row.assets': 'Assets',
+  },
+  vi: {
+    'editmenu.q': 'Bạn muốn đổi gì?',
+    'editmenu.style.l': '🎨 Đổi phong cách', 'editmenu.style.h': 'Giữ nội dung, đổi phong cách hình ảnh',
+    'editmenu.content.l': '✏️ Sửa nội dung', 'editmenu.content.h': 'Đổi câu chữ / chủ đề / viết lại kịch bản',
+    'editmenu.duration.l': '⏱️ Đổi thời lượng', 'editmenu.duration.h': 'Chỉnh thời lượng mỗi khung / nhịp',
+    'type.q': 'Bạn muốn làm loại nội dung nào?',
+    'type.single.l': 'Thẻ tiêu đề một khung', 'type.single.h': 'logo / bìa / một khung - 5-10s',
+    'type.multi.l': 'Teaser nhiều khung', 'type.multi.h': 'teaser sản phẩm / sự kiện, 3-6 khung',
+    'type.data.l': 'Poster dữ liệu', 'type.data.h': '1-2 con số chính, phong cách viral mạng xã hội',
+    'type.concept.l': 'Video giải thích ý tưởng', 'type.concept.h': 'vài khung để làm rõ một ý / tính năng',
+    'style.q': 'Phong cách hình ảnh thế nào?',
+    'style.cyber.h': 'neon / nhiễu glitch / tương phản cao',
+    'style.swiss.h': 'lưới / sans-serif / khoảng trắng',
+    'style.warm.h': 'cảm giác giấy / serif / tông ấm',
+    'style.mono.h': 'đen trắng / khối / đậm',
+    'style.template.l': 'Chọn từ template thiết kế', 'style.template.h': 'chọn một template có sẵn ở trên',
+    'needtemplate.q': 'Chọn một template ở menu «Template» phía trên, chọn xong bấm tiếp ở dưới; hoặc chọn một phong cách dựng sẵn:',
+    'needtemplate.continue.l': 'Đã chọn template, tiếp tục', 'needtemplate.continue.h': 'tạo bằng template đã chọn ở trên',
+    'format.title.edit': 'Chỉnh lại định dạng',
+    'format.title.multi': 'Bước cuối: kích thước / thời lượng mỗi khung / số khung',
+    'format.title.single': 'Bước cuối: chọn kích thước / thời lượng',
+    'format.f.aspect': 'Kích thước khung hình',
+    'format.f.perframe': 'Thời lượng mỗi khung (giây)', 'format.f.perframe.h': 'tổng = thời lượng mỗi khung × số khung',
+    'format.f.frames': 'Số khung',
+    'format.f.remotion': '⚡ Remotion cho khung dữ liệu', 'format.f.remotion.h': 'dựng khung dữ liệu bằng Remotion (số chạy / cột lớn dần); các khung khác vẫn dùng Hyperframes',
+    'format.f.remotion.off': 'Tắt', 'format.f.remotion.on': 'Bật · Remotion',
+    'format.f.duration': 'Thời lượng (giây)',
+    'aspect.169': '16:9 ngang', 'aspect.916': '9:16 dọc', 'aspect.11': '1:1 vuông', 'aspect.45': '4:5 dọc',
+    'confirm.q': 'Bắt đầu tạo với các thông tin này?',
+    'confirm.row.type': 'Loại', 'confirm.row.content': 'Nội dung', 'confirm.row.style': 'Phong cách', 'confirm.row.template': 'Template',
+    'confirm.row.aspect': 'Kích thước', 'confirm.row.duration': 'Thời lượng', 'confirm.row.frame_count': 'Số khung', 'confirm.row.per_frame': 'Mỗi khung',
+    'confirm.row.total': 'Tổng thời lượng', 'confirm.row.assets': 'Tư liệu',
+  },
+  zh: {
+    'editmenu.q': '想改哪方面？',
+    'editmenu.style.l': '🎨 换风格', 'editmenu.style.h': '保留内容，换一套视觉风格',
+    'editmenu.content.l': '✏️ 改内容', 'editmenu.content.h': '改文案 / 主题 / 重写脚本',
+    'editmenu.duration.l': '⏱️ 改时长', 'editmenu.duration.h': '调整每帧时长 / 节奏',
+    'type.q': '想做哪种内容？',
+    'type.single.l': '单帧标题卡', 'type.single.h': 'logo / 封面 / 单画面 - 5-10s',
+    'type.multi.l': '多帧预告片', 'type.multi.h': '产品 / 活动 teaser, 3-6 帧',
+    'type.data.l': '数据大字报', 'type.data.h': '1-2 个核心数字, 社媒爆款风',
+    'type.concept.l': '概念解说短片', 'type.concept.h': '几帧讲清一个 idea / feature',
+    'style.q': '视觉风格怎么定？',
+    'style.cyber.h': '霓虹 / 故障感 / 高对比',
+    'style.swiss.h': '网格 / 无衬线 / 留白',
+    'style.warm.h': '纸感 / 衬线 / 暖色',
+    'style.mono.h': '黑白 / 块状 / 粗体',
+    'style.template.l': '从设计模板选', 'style.template.h': '上方挑一个现成模板',
+    'needtemplate.q': '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
+    'needtemplate.continue.l': '我已选好模板，继续', 'needtemplate.continue.h': '用顶部选中的模板生成',
+    'format.title.edit': '改一下格式',
+    'format.title.multi': '最后一步：尺寸 / 每帧时长 / 帧数',
+    'format.title.single': '最后一步：选个尺寸 / 时长',
+    'format.f.aspect': '画面尺寸',
+    'format.f.perframe': '每帧时长 (秒)', 'format.f.perframe.h': '总时长 = 每帧时长 × 帧数',
+    'format.f.frames': '帧数',
+    'format.f.remotion': '⚡ 数据帧用 Remotion', 'format.f.remotion.h': '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
+    'format.f.remotion.off': '关', 'format.f.remotion.on': '开 · Remotion',
+    'format.f.duration': '时长 (秒)',
+    'aspect.169': '16:9 横屏', 'aspect.916': '9:16 竖屏', 'aspect.11': '1:1 方形', 'aspect.45': '4:5 小红书',
+    'confirm.q': '按这些信息开始生成？',
+    'confirm.row.type': '类型', 'confirm.row.content': '内容', 'confirm.row.style': '风格', 'confirm.row.template': '模板',
+    'confirm.row.aspect': '尺寸', 'confirm.row.duration': '时长', 'confirm.row.frame_count': '帧数', 'confirm.row.per_frame': '每帧时长',
+    'confirm.row.total': '总时长', 'confirm.row.assets': '素材',
+  },
+};
+
+/** Translate a card display string for `locale` (falls back to en, then the key). */
+function tCard(locale: string, key: string): string {
+  const en = CARD_STRINGS.en!;
+  const dict = CARD_STRINGS[locale] ?? en;
+  return dict[key] ?? en[key] ?? key;
+}
+
+/**
+ * Reverse map: a canonical card pick `value` (kept in Chinese as the logic key)
+ * → its display string key. Used to show a localized label in the confirm
+ * summary instead of the raw canonical value. Unknown values (freeform answers,
+ * English style names, template names) pass through unchanged.
+ */
+const PICK_DISPLAY_KEY: Record<string, string> = {
+  '单帧标题卡': 'type.single.l', '多帧预告片': 'type.multi.l',
+  '数据大字报': 'type.data.l', '概念解说短片': 'type.concept.l',
+  '从设计模板选': 'style.template.l', '我已选好模板，继续': 'needtemplate.continue.l',
+  '16:9 横屏': 'aspect.169', '9:16 手机竖屏': 'aspect.916', '1:1 方形': 'aspect.11', '4:5 小红书': 'aspect.45',
+};
+
+/** Localize a canonical pick value for display; pass through if not a known card value. */
+function localizePickValue(locale: string, value: string): string {
+  const key = PICK_DISPLAY_KEY[value.trim()];
+  return key ? tCard(locale, key) : value;
+}
+
+/**
  * Best-effort parse of format params from a FREE-TEXT user reply.
  *
  * The format step is supposed to render an `hv-form` card (segmented buttons)
@@ -2563,11 +2698,11 @@ function buildPromptInner(args: BuildPromptArgs): string {
     em.push('```hv-options');
     em.push(JSON.stringify({
       meta: { phase: 'edit-menu' },
-      question: '想改哪方面？',
+      question: tCard(locale, 'editmenu.q'),
       options: [
-        { label: '🎨 换风格', hint: '保留内容，换一套视觉风格' },
-        { label: '✏️ 改内容', hint: '改文案 / 主题 / 重写脚本' },
-        { label: '⏱️ 改时长', hint: '调整每帧时长 / 节奏' },
+        { value: '🎨 换风格', label: tCard(locale, 'editmenu.style.l'), hint: tCard(locale, 'editmenu.style.h') },
+        { value: '✏️ 改内容', label: tCard(locale, 'editmenu.content.l'), hint: tCard(locale, 'editmenu.content.h') },
+        { value: '⏱️ 改时长', label: tCard(locale, 'editmenu.duration.l'), hint: tCard(locale, 'editmenu.duration.h') },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2590,12 +2725,12 @@ function buildPromptInner(args: BuildPromptArgs): string {
     opener.push('```hv-options');
     opener.push(JSON.stringify({
       meta: { phase: 'type' },
-      question: '想做哪种内容？',
+      question: tCard(locale, 'type.q'),
       options: [
-        { label: '单帧标题卡',   hint: 'logo / 封面 / 单画面 - 5-10s' },
-        { label: '多帧预告片',   hint: '产品 / 活动 teaser, 3-6 帧' },
-        { label: '数据大字报',   hint: '1-2 个核心数字, 社媒爆款风' },
-        { label: '概念解说短片', hint: '几帧讲清一个 idea / feature' },
+        { value: '单帧标题卡',   label: tCard(locale, 'type.single.l'),  hint: tCard(locale, 'type.single.h') },
+        { value: '多帧预告片',   label: tCard(locale, 'type.multi.l'),   hint: tCard(locale, 'type.multi.h') },
+        { value: '数据大字报',   label: tCard(locale, 'type.data.l'),    hint: tCard(locale, 'type.data.h') },
+        { value: '概念解说短片', label: tCard(locale, 'type.concept.l'), hint: tCard(locale, 'type.concept.h') },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2669,13 +2804,13 @@ function buildPromptInner(args: BuildPromptArgs): string {
     p.push('```hv-options');
     p.push(JSON.stringify({
       meta: { phase: 'style' },
-      question: '视觉风格怎么定？',
+      question: tCard(locale, 'style.q'),
       options: [
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
-        { label: '从设计模板选',       hint: '上方挑一个现成模板' },
+        { label: 'Cyberpunk glitch',   hint: tCard(locale, 'style.cyber.h') },
+        { label: 'Swiss minimalist',   hint: tCard(locale, 'style.swiss.h') },
+        { label: 'Warm-grain magazine',hint: tCard(locale, 'style.warm.h') },
+        { label: 'Mono brutalist',     hint: tCard(locale, 'style.mono.h') },
+        { value: '从设计模板选', label: tCard(locale, 'style.template.l'), hint: tCard(locale, 'style.template.h') },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2694,13 +2829,13 @@ function buildPromptInner(args: BuildPromptArgs): string {
     p.push('```hv-options');
     p.push(JSON.stringify({
       meta: { phase: 'need-template' },
-      question: '先在顶部「模板」里选一个模板，选好后点下面继续；或直接选一种内置风格：',
+      question: tCard(locale, 'needtemplate.q'),
       options: [
-        { label: '我已选好模板，继续', hint: '用顶部选中的模板生成' },
-        { label: 'Cyberpunk glitch',   hint: '霓虹 / 故障感 / 高对比' },
-        { label: 'Swiss minimalist',   hint: '网格 / 无衬线 / 留白' },
-        { label: 'Warm-grain magazine',hint: '纸感 / 衬线 / 暖色' },
-        { label: 'Mono brutalist',     hint: '黑白 / 块状 / 粗体' },
+        { value: '我已选好模板，继续', label: tCard(locale, 'needtemplate.continue.l'), hint: tCard(locale, 'needtemplate.continue.h') },
+        { label: 'Cyberpunk glitch',   hint: tCard(locale, 'style.cyber.h') },
+        { label: 'Swiss minimalist',   hint: tCard(locale, 'style.swiss.h') },
+        { label: 'Warm-grain magazine',hint: tCard(locale, 'style.warm.h') },
+        { label: 'Mono brutalist',     hint: tCard(locale, 'style.mono.h') },
       ],
       allow_freeform: true,
     }, null, 2));
@@ -2739,16 +2874,16 @@ function buildPromptInner(args: BuildPromptArgs): string {
     p.push('```hv-form');
     p.push(JSON.stringify({
       meta: { phase: 'format' },
-      title: isEdit ? '改一下格式' : (isMulti ? '最后一步：尺寸 / 每帧时长 / 帧数' : '最后一步：选个尺寸 / 时长'),
+      title: isEdit ? tCard(locale, 'format.title.edit') : (isMulti ? tCard(locale, 'format.title.multi') : tCard(locale, 'format.title.single')),
       fields: [
         {
-          key: 'aspect', label: '画面尺寸', kind: 'buttons', required: true,
+          key: 'aspect', label: tCard(locale, 'format.f.aspect'), kind: 'buttons', required: true,
           default: defaults.aspect,
           options: [
-            { value: '16:9 横屏',     label: '16:9 横屏' },
-            { value: '9:16 手机竖屏', label: '9:16 竖屏' },
-            { value: '1:1 方形',      label: '1:1 方形' },
-            { value: '4:5 小红书',    label: '4:5 小红书' },
+            { value: '16:9 横屏',     label: tCard(locale, 'aspect.169') },
+            { value: '9:16 手机竖屏', label: tCard(locale, 'aspect.916') },
+            { value: '1:1 方形',      label: tCard(locale, 'aspect.11') },
+            { value: '4:5 小红书',    label: tCard(locale, 'aspect.45') },
           ],
         },
         // Multi-frame: pace by PER-FRAME duration (total = per_frame × frames,
@@ -2756,13 +2891,13 @@ function buildPromptInner(args: BuildPromptArgs): string {
         ...(isMulti
           ? [
               {
-                key: 'per_frame', label: '每帧时长 (秒)', kind: 'buttons', required: true,
+                key: 'per_frame', label: tCard(locale, 'format.f.perframe'), kind: 'buttons', required: true,
                 default: defaults.per_frame,
-                hint: '总时长 = 每帧时长 × 帧数',
+                hint: tCard(locale, 'format.f.perframe.h'),
                 options: ['2', '3', '4', '5', '6', '8'].map((v) => ({ value: v, label: `${v}s` })),
               },
               {
-                key: 'frame_count', label: '帧数', kind: 'buttons', required: true,
+                key: 'frame_count', label: tCard(locale, 'format.f.frames'), kind: 'buttons', required: true,
                 default: defaults.frame_count,
                 options: ['2', '3', '4', '5', '6', '7', '8', '9', '10'].map((v) => ({ value: v, label: v })),
               },
@@ -2770,18 +2905,18 @@ function buildPromptInner(args: BuildPromptArgs): string {
               // bars grow) instead of static hyperframes HTML. Default OFF —
               // Remotion is a user-chosen enhancement, the AI never flips it.
               {
-                key: 'remotion_enhance', label: '⚡ 数据帧用 Remotion', kind: 'buttons', required: false,
+                key: 'remotion_enhance', label: tCard(locale, 'format.f.remotion'), kind: 'buttons', required: false,
                 default: '关',
-                hint: '数据帧用原生 Remotion 渲染（数字滚动 / 柱子生长）；其余帧仍走 Hyperframes',
+                hint: tCard(locale, 'format.f.remotion.h'),
                 options: [
-                  { value: '关', label: '关' },
-                  { value: '开', label: '开 · Remotion' },
+                  { value: '关', label: tCard(locale, 'format.f.remotion.off') },
+                  { value: '开', label: tCard(locale, 'format.f.remotion.on') },
                 ],
               },
             ]
           : [
               {
-                key: 'duration', label: '时长 (秒)', kind: 'buttons', required: true,
+                key: 'duration', label: tCard(locale, 'format.f.duration'), kind: 'buttons', required: true,
                 default: defaults.duration,
                 options: ['3', '5', '10', '15'].map((v) => ({ value: v, label: `${v}s` })),
               },
@@ -2802,28 +2937,32 @@ function buildPromptInner(args: BuildPromptArgs): string {
     const pickedStyle = lastCardPickByPhase(history, 'style') ?? '';
     const contentTurns = collectContentTurns(history);
     const summaryRows: { label: string; value: string }[] = [];
-    if (pickedType) summaryRows.push({ label: '类型', value: pickedType });
+    if (pickedType) summaryRows.push({ label: tCard(locale, 'confirm.row.type'), value: localizePickValue(locale, pickedType) });
     if (contentTurns.length > 0) {
-      summaryRows.push({ label: '内容', value: contentTurns.join(' · ').slice(0, 240) });
+      summaryRows.push({ label: tCard(locale, 'confirm.row.content'), value: contentTurns.join(' · ').slice(0, 240) });
     }
-    if (pickedStyle) summaryRows.push({ label: '风格', value: pickedStyle });
-    if (tmpl) summaryRows.push({ label: '模板', value: tmpl.name });
+    if (pickedStyle) summaryRows.push({ label: tCard(locale, 'confirm.row.style'), value: localizePickValue(locale, pickedStyle) });
+    if (tmpl) summaryRows.push({ label: tCard(locale, 'confirm.row.template'), value: tmpl.name });
     const labelMap: Record<string, string> = {
-      aspect: '尺寸', duration: '时长', frame_count: '帧数', per_frame: '每帧时长',
+      aspect: tCard(locale, 'confirm.row.aspect'), duration: tCard(locale, 'confirm.row.duration'),
+      frame_count: tCard(locale, 'confirm.row.frame_count'), per_frame: tCard(locale, 'confirm.row.per_frame'),
     };
     // When pacing by per-frame, show per-frame + frames + derived total.
     const pf = Number(collected.per_frame ?? '') || 0;
     const keys = pf > 0 ? ['aspect', 'per_frame', 'frame_count'] : ['aspect', 'duration', 'frame_count'];
     for (const k of keys) {
       const v = collected[k];
-      if (v) summaryRows.push({ label: labelMap[k] ?? k, value: k === 'per_frame' ? `${v}s` : v });
+      if (v) summaryRows.push({
+        label: labelMap[k] ?? k,
+        value: k === 'per_frame' ? `${v}s` : (k === 'aspect' ? localizePickValue(locale, v) : v),
+      });
     }
     if (pf > 0) {
       const frames = Number(collected.frame_count ?? '4') || 4;
-      summaryRows.push({ label: '总时长', value: `${pf * frames}s` });
+      summaryRows.push({ label: tCard(locale, 'confirm.row.total'), value: `${pf * frames}s` });
     }
     if (attachments.length > 0) {
-      summaryRows.push({ label: '素材', value: attachments.map((a) => a.filename).join(', ') });
+      summaryRows.push({ label: tCard(locale, 'confirm.row.assets'), value: attachments.map((a) => a.filename).join(', ') });
     }
 
     const p: string[] = [];
@@ -2832,7 +2971,7 @@ function buildPromptInner(args: BuildPromptArgs): string {
     p.push('```hv-confirm');
     p.push(JSON.stringify({
       meta: { phase: 'confirm' },
-      title: '按这些信息生成？',
+      title: tCard(locale, 'confirm.q'),
       summary: summaryRows,
       actions: ['generate', 'edit'],
     }, null, 2));
