@@ -1162,14 +1162,20 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
 
         // Persist assistant message — strip the html / graph blocks when present (UI sees summary line)
         let persistText = summaryLine
-          ? assistantText
+          ? (assistantText
               .replace(/```html[#\w-]*[\s\S]*?```/gi, '')
               .replace(/```json#content-graph[\s\S]*?```/i, '')
               .replace(/```json[\s\S]*?```/i, (m) =>
                 /content-graph|"intent"\s*:|"nodes"\s*:/i.test(m) ? '' : m,
               )
-              .trim() || summaryLine
+              .trim() || summaryLine)
           : assistantText;
+        // Stamp a stable, render-invisible marker so phase detection survives
+        // progress-string localization (only on a first generation, not iterations).
+        const isGenerationSummary = !!summaryLine && /storyboard (generated|regenerated|restyled)/i.test(summaryLine);
+        if (isGenerationSummary && !persistText.includes(GENERATED_MARKER)) {
+          persistText += ` ${GENERATED_MARKER}`;
+        }
 
         // Empty agent reply (no HTML, no graph, no prose) usually means the
         // prompt confused the model into doing nothing. Give the user something
@@ -2204,16 +2210,29 @@ function lastFormSubmission(history: ChatMessage[]): Record<string, string> | un
   return undefined;
 }
 
+/**
+ * Stable, language-agnostic "a real generation happened" marker. Appended to the
+ * persisted assistant message on success and matched by hadGenerationYet(). It is
+ * an HTML comment so the chat renderer never shows it (app.js also strips it
+ * defensively). Decouples phase detection from the (now localized) progress text.
+ */
+export const GENERATED_MARKER = '<!--hv:generated-->';
+
 /** Has a successful generation already happened in this conversation? */
-function hadGenerationYet(history: ChatMessage[]): boolean {
+export function hadGenerationYet(history: ChatMessage[]): boolean {
   // Only count a real storyboard/video generation, not any assistant turn that
   // happens to contain a "✓". The old broad check (`✓\s`) matched the persisted
   // summary lines of the iteration sub-flow itself, so once you'd generated, the
   // flow could never leave 'iterate'. Look for concrete generation markers.
+  // Primary signal: the stable GENERATED_MARKER (language-agnostic). The regex
+  // alternatives stay for backward compat with already-persisted histories.
   return history.some(
     (m) =>
       m.role === 'assistant' &&
-      /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(m.content),
+      (m.content.includes(GENERATED_MARKER) ||
+        /```json#content-graph|故事板规划完成|storyboard (generated|regenerated|restyled)|帧完成|frame .* (done|完成)/i.test(
+          m.content,
+        )),
   );
 }
 

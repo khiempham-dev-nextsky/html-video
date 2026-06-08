@@ -1542,7 +1542,7 @@ function renderMessage(m, idx) {
     </div>`;
   }
   // assistant: try each card protocol in turn
-  const raw = m.content ?? '';
+  const raw = (m.content ?? '').replaceAll('<!--hv:generated-->', '');
   const formP = parseHvForm(raw);
   if (formP.form) {
     // Resolve "submitted" from history: any user turn after this card with
