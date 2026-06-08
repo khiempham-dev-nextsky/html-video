@@ -3185,6 +3185,11 @@ async function runSplitMultiFrameGenerate(
     ? (tmpl ? `(use the selected template "${tmpl.name}" — ${tmpl.description})` : '(let the model choose)')
     : pickedStyle;
 
+  // Language the user is chatting in — drives the OUTPUT LANGUAGE directive
+  // below AND the progress strings. Source material is deliberately excluded:
+  // the user's chat language wins (spec §2 #3).
+  const lang = detectUserLang([openingTopic ?? '', ...contentTurns].join('\n'));
+
   // ---- Step 1: obtain the content graph ----
   let graph: import('@html-video/content-graph').ContentGraph;
   if (restyleOnly) {
@@ -3202,17 +3207,19 @@ async function runSplitMultiFrameGenerate(
   const graphPromptParts: string[] = [];
   graphPromptParts.push(`Plan a ${frameCountReq}-frame HTML video storyboard. Output ONLY a content-graph JSON in a fenced \`\`\`json#content-graph block — no HTML, no prose outside.`);
   graphPromptParts.push('');
+  graphPromptParts.push(outputLanguageDirective(lang));
+  graphPromptParts.push('');
   graphPromptParts.push(`Inputs (use literally — do NOT invent brand names or facts beyond these):`);
-  graphPromptParts.push(`- 类型 / type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
+  graphPromptParts.push(`- type: ${pickedType || '(unspecified)'} (this is the FORMAT, NOT the subject — never make the video be "about" the type itself)`);
   // Lock the storyboard to the user's opening subject (unless a SOURCE MATERIAL
   // block below supersedes it). This is the path the user actually hits, and
   // where "随机" turned into a randomness explainer instead of the Open Design
   // promo they asked for.
   if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
-    graphPromptParts.push(`- 主题 / subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "随机 / 随便 / anything / 你定", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
+    graphPromptParts.push(`- subject (LOCKED): the user opened with "${openingTopic}". The synopsis and EVERY node MUST be about this subject. If the content line below is a vague word like "random / anything / whatever / you decide", it means "you choose the concrete angle and points — but keep the subject = "${openingTopic}"". NEVER make the video about randomness or the literal word.`);
   }
   if (contentTurns.length > 0) {
-    graphPromptParts.push(`- 内容 / content:`);
+    graphPromptParts.push(`- content:`);
     for (const t of contentTurns) graphPromptParts.push(`  · ${t.replace(/\n/g, ' ').slice(0, 280)}`);
   }
   // Inline the fetched article / repo / uploaded text — THIS is the subject of
@@ -3229,11 +3236,11 @@ async function runSplitMultiFrameGenerate(
       graphPromptParts.push((a.inlineText ?? '').slice(0, 6000));
     }
   }
-  if (styleLabel) graphPromptParts.push(`- 风格 / style: ${styleLabel}`);
-  graphPromptParts.push(`- 总时长: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
+  if (styleLabel) graphPromptParts.push(`- style: ${styleLabel}`);
+  graphPromptParts.push(`- total duration: ${totalDurationSec}s split across ${frameCountReq} frames (~${perFrameDurationSec}s each)`);
   graphPromptParts.push('');
   if (sourceTexts.length > 0) {
-    graphPromptParts.push(`GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE (e.g. "什么是概念解说", "信息密度×传播效率") that would fit any video. If a line could fit any topic, it's wrong.`);
+    graphPromptParts.push(`GROUNDING (REQUIRED): every node's text must come from the SOURCE MATERIAL above — quote its real product names, facts, numbers. The synopsis must name the source's actual subject. BANNED: generic filler about the content TYPE that would fit any video (e.g. "what is an explainer", "information density × reach"). If a line could fit any topic, it's wrong.`);
     graphPromptParts.push('');
   }
   graphPromptParts.push(`Schema (keep all keys; one node per frame; nodes[].id should be a short readable slug like "intro" / "stat_users" / "outro"):`);
@@ -3310,13 +3317,17 @@ async function runSplitMultiFrameGenerate(
     const fp: string[] = [];
     fp.push(`Generate ONE complete HTML page for frame "${nodeId}" of a ${graph.nodes.length}-frame video. Output ONE \`\`\`html block, nothing else.`);
     fp.push('');
+    if (!restyleOnly) {
+      fp.push(outputLanguageDirective(lang));
+      fp.push('');
+    }
     fp.push(`Frame ${i + 1} of ${graph.nodes.length}: ${frameContext}`);
     if (restyleOnly) {
       // Keep the exact words; only the visual style changes.
       fp.push(`RESTYLE: keep this frame's TEXT EXACTLY as given above — same headline, subtitle, numbers, wording. Do NOT rewrite, translate, or reword anything. Change ONLY the visual style (layout, colour, typography, motion) to: ${styleLabel || pickedStyle || '(the new style)'}.`);
     }
     if (openingTopic && !attachments.some((a) => !!a.inlineText)) {
-      fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; "随机/随便" anywhere in the inputs means you pick details, not a new topic.`);
+      fp.push(`Subject (locked): "${openingTopic}". This frame is about this subject; a vague placeholder ("random / anything / you decide") in the inputs means you pick details, not a new topic.`);
     }
     fp.push(`Duration: ${node.durationSec ?? perFrameDurationSec}s`);
     fp.push(`Type: ${pickedType}`);
