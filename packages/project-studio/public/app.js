@@ -1511,6 +1511,24 @@ async function pickAndSend(label) {
   await sendMessage();
 }
 
+// A card pick is SENT as the option's stable `value` (a canonical, often
+// Chinese, logic key) but should be DISPLAYED as the localized `label` the user
+// actually clicked. Scan back for the nearest assistant hv-options card and map
+// value→label. Works live and after reload (both render from state.messages).
+function resolvePickLabel(content, idx) {
+  const v = (content ?? '').trim();
+  if (!v) return null;
+  for (let i = idx - 1; i >= 0 && i >= idx - 3; i--) {
+    const prev = state.messages[i];
+    if (!prev || prev.role !== 'assistant') continue;
+    const { options } = parseHvOptions(prev.content ?? '');
+    if (!options) continue;
+    const hit = options.options.find((o) => (o.value ?? o.label) === v);
+    return hit ? (hit.label ?? v) : null;
+  }
+  return null;
+}
+
 function renderMessage(m, idx) {
   if (m.role === 'user') {
     // User-side form-submission marker carries hidden JSON the user can't read;
@@ -1518,6 +1536,11 @@ function renderMessage(m, idx) {
     const formMatch = /^\[hv-form:submit\]\n([\s\S]*)$/.exec(m.content ?? '');
     if (formMatch) {
       return `<div class="msg user">${t('chat.summary.form_submitted')}</div>`;
+    }
+    // A clicked card option: show the localized label, not the canonical value.
+    const pickLabel = resolvePickLabel(m.content, idx);
+    if (pickLabel) {
+      return `<div class="msg user">${esc(pickLabel)}</div>`;
     }
     if ((m.content ?? '').trim() === '[hv-confirm:generate]') {
       return `<div class="msg user">${t('chat.summary.confirm_generate')}</div>`;
