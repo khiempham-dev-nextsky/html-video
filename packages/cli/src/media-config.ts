@@ -14,10 +14,12 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveMinimaxCredentials, type MinimaxCredentials } from '@html-video/core';
+import { resolveMinimaxCredentials, type MinimaxCredentials, type AudioProviderConfig } from '@html-video/core';
 
 interface MediaConfig {
   minimax?: { apiKey?: string; baseUrl?: string };
+  /** Provider selection for the audio (TTS / music) layer. */
+  audio?: { ttsProvider?: string; musicProvider?: string; ttsVoiceId?: string };
 }
 
 export class MediaConfigStore {
@@ -71,6 +73,37 @@ export class MediaConfigStore {
     const cfg = this.read();
     delete cfg.minimax;
     this.write(cfg);
+  }
+
+  /** Build the AudioProviderConfig the registry consumes: provider selection
+   *  (defaulting to the free edge + cc0 providers) merged with resolved MiniMax
+   *  creds (so the MiniMax provider works when selected). */
+  resolveAudioConfig(): AudioProviderConfig {
+    const audio = this.read().audio ?? {};
+    const mm = this.resolveMinimax();
+    return {
+      ttsProvider: audio.ttsProvider ?? 'edge',
+      musicProvider: audio.musicProvider ?? 'cc0',
+      ...(audio.ttsVoiceId && { ttsVoiceId: audio.ttsVoiceId }),
+      ...(mm && { minimax: mm }),
+    };
+  }
+
+  /** Persist the audio provider/voice selection from the Settings UI. */
+  setAudio(sel: { ttsProvider?: string; musicProvider?: string; ttsVoiceId?: string }): void {
+    const cfg = this.read();
+    cfg.audio = { ...cfg.audio, ...sel };
+    this.write(cfg);
+  }
+
+  /** Read the current audio selection (raw, for the Settings UI). */
+  getAudio(): { ttsProvider: string; musicProvider: string; ttsVoiceId?: string } {
+    const a = this.read().audio ?? {};
+    return {
+      ttsProvider: a.ttsProvider ?? 'edge',
+      musicProvider: a.musicProvider ?? 'cc0',
+      ...(a.ttsVoiceId && { ttsVoiceId: a.ttsVoiceId }),
+    };
   }
 
   /** Resolve usable credentials: config file first, then env. null if neither. */
