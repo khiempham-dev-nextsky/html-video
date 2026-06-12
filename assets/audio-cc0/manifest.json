@@ -1,0 +1,26 @@
+{
+  "_note": "Starter beds synthesized with ffmpeg (sine/tremolo) — genuinely license-clean (CC0) but minimal. Replace with real CC0 tracks (e.g. Pixabay Music CC0 / Free Music Archive CC0) and record each source_url.",
+  "tracks": [
+    {
+      "file": "calm-ambient-01.mp3",
+      "moods": ["calm", "ambient", "cinematic", "slow", "soft"],
+      "bpm": 60,
+      "license": "CC0-1.0",
+      "source_url": "self-generated (ffmpeg sine 110Hz + 164.81Hz pad)"
+    },
+    {
+      "file": "cinematic-low-01.mp3",
+      "moods": ["cinematic", "epic", "dramatic", "deep", "tension"],
+      "bpm": 60,
+      "license": "CC0-1.0",
+      "source_url": "self-generated (ffmpeg sine 73.42Hz + 110Hz swell)"
+    },
+    {
+      "file": "upbeat-pulse-01.mp3",
+      "moods": ["upbeat", "energetic", "happy", "bright", "fast"],
+      "bpm": 120,
+      "license": "CC0-1.0",
+      "source_url": "self-generated (ffmpeg sine 220Hz + tremolo pulse)"
+    }
+  ]
+}
