@@ -390,6 +390,10 @@ export interface ProjectSoundtrack {
   /** Per-frame narration: { [graphNodeId]: line }. The UI edits/shows narration
    *  per selected frame; narrationText is these stitched in frame order. */
   narrationByFrame?: Record<string, string>;
+  /** Per-frame narration AUDIO: one synthesized segment per frame. At export each
+   *  segment is delayed to its frame's start time so it plays during that frame.
+   *  When present (multi-frame), supersedes the single `narrationAssetId`. */
+  narrationFrames?: Array<{ frameId: string; assetId: string }>;
   /** Optional music fade-in seconds at the start of the video */
   fadeInSec?: number;
   /** Optional music fade-out seconds at the end of the video */

@@ -491,28 +491,46 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
               res.end();
               return;
             }
-            sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
-            const narrText = body.narration!.text!.trim();
-            const nar = await ttsP.generateTts({
-              text: narrText,
-              // Voice precedence: explicit per-request voice → configured voice.
-              ...(body.narration!.voiceId !== undefined
-                ? { voiceId: body.narration!.voiceId }
-                : (audioCfg.ttsVoiceId ? { voiceId: audioCfg.ttsVoiceId } : {})),
-              lang: detectUserLang(narrText),
-              cfg: audioCfg,
-            });
-            const { asset } = await ctx.orchestrator.addBufferAsset(
-              projectId,
-              nar.bytes,
-              nar.ext,
-              `narration · ${body.narration!.text!.trim().slice(0, 60)}`,
-            );
-            soundtrack.narrationAssetId = asset.id;
-            soundtrack.narrationText = body.narration!.text!.trim();
-            if (body.narration!.byFrame) soundtrack.narrationByFrame = body.narration!.byFrame;
-            if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
-            sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
+            // Voice precedence: explicit per-request voice → configured voice.
+            const voiceOpt = body.narration!.voiceId !== undefined
+              ? { voiceId: body.narration!.voiceId }
+              : (audioCfg.ttsVoiceId ? { voiceId: audioCfg.ttsVoiceId } : {});
+            const byFrame = body.narration!.byFrame ?? {};
+            // Frames in export (order) order that actually carry narration text.
+            const orderedFrames = [...(project.frames ?? [])].sort((a, b) => a.order - b.order);
+            const framedLines = orderedFrames
+              .map((f) => ({ frameId: f.graphNodeId, text: (byFrame[f.graphNodeId] ?? '').trim() }))
+              .filter((x) => x.text.length > 0);
+
+            if (framedLines.length > 1) {
+              // ---- per-frame: one segment per frame, synced to its time at export ----
+              const narrationFrames: { frameId: string; assetId: string }[] = [];
+              for (let i = 0; i < framedLines.length; i++) {
+                const fl = framedLines[i]!;
+                sse({ type: 'audio_progress', stage: 'narration', message: `generating narration ${i + 1}/${framedLines.length}…` });
+                const seg = await ttsP.generateTts({ text: fl.text, ...voiceOpt, lang: detectUserLang(fl.text), cfg: audioCfg });
+                const { asset } = await ctx.orchestrator.addBufferAsset(projectId, seg.bytes, seg.ext, `narration · ${fl.frameId} · ${fl.text.slice(0, 40)}`);
+                narrationFrames.push({ frameId: fl.frameId, assetId: asset.id });
+              }
+              soundtrack.narrationFrames = narrationFrames;
+              delete soundtrack.narrationAssetId; // per-frame supersedes the single track
+              soundtrack.narrationText = framedLines.map((x) => x.text).join('\n');
+              soundtrack.narrationByFrame = byFrame;
+              if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
+              sse({ type: 'audio_progress', stage: 'narration', message: `${narrationFrames.length} per-frame segments`, asset_id: narrationFrames[0]?.assetId });
+            } else {
+              // ---- single track (single-frame project, or one line) ----
+              sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
+              const narrText = framedLines[0]?.text ?? body.narration!.text!.trim();
+              const nar = await ttsP.generateTts({ text: narrText, ...voiceOpt, lang: detectUserLang(narrText), cfg: audioCfg });
+              const { asset } = await ctx.orchestrator.addBufferAsset(projectId, nar.bytes, nar.ext, `narration · ${narrText.slice(0, 60)}`);
+              soundtrack.narrationAssetId = asset.id;
+              delete soundtrack.narrationFrames; // single supersedes any stale per-frame set
+              soundtrack.narrationText = narrText;
+              if (body.narration!.byFrame) soundtrack.narrationByFrame = byFrame;
+              if (body.narration!.volumeDb !== undefined) soundtrack.narrationVolumeDb = body.narration!.volumeDb;
+              sse({ type: 'audio_progress', stage: 'narration', message: nar.providerNote, asset_id: asset.id });
+            }
           }
 
           if (body.fadeInSec !== undefined) soundtrack.fadeInSec = body.fadeInSec;

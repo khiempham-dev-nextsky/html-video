@@ -658,7 +658,26 @@ export class ProjectOrchestrator {
       id ? project.assets.find((a) => a.id === id)?.path : undefined;
     const musicPath = findPath(st.musicAssetId);
     const narrationPath = findPath(st.narrationAssetId);
-    if (!musicPath && !narrationPath) return; // referenced assets are gone
+
+    // Per-frame narration: place each segment at its frame's start time. Frame
+    // start = cumulative sum of prior frames' durations, in export (order) order
+    // — the exact timeline concatFramesWithFfmpeg builds.
+    let narrationSegments: Array<{ path: string; delaySec: number }> | undefined;
+    if (st.narrationFrames && st.narrationFrames.length > 0) {
+      const ordered = [...(project.frames ?? [])].sort((a, b) => a.order - b.order);
+      const startById = new Map<string, number>();
+      let acc = 0;
+      for (const f of ordered) { startById.set(f.graphNodeId, acc); acc += f.durationSec || 0; }
+      narrationSegments = st.narrationFrames
+        .map((nf) => {
+          const path = findPath(nf.assetId);
+          return path ? { path, delaySec: startById.get(nf.frameId) ?? 0 } : undefined;
+        })
+        .filter((s): s is { path: string; delaySec: number } => !!s);
+    }
+
+    const hasNarration = !!narrationPath || (narrationSegments?.length ?? 0) > 0;
+    if (!musicPath && !hasNarration) return; // referenced assets are gone
 
     onProgress?.(99, 'mixing audio');
     const { rename } = await import('node:fs/promises');
@@ -676,7 +695,10 @@ export class ProjectOrchestrator {
       videoPath: outputPath,
       outputPath: tmpOut,
       ...(musicPath !== undefined && { musicPath }),
-      ...(narrationPath !== undefined && { narrationPath }),
+      // Per-frame segments take precedence; fall back to the single track.
+      ...(narrationSegments && narrationSegments.length > 0
+        ? { narrationSegments }
+        : (narrationPath !== undefined && { narrationPath })),
       ...(st.musicVolumeDb !== undefined && { musicVolumeDb: st.musicVolumeDb }),
       ...(st.narrationVolumeDb !== undefined && { narrationVolumeDb: st.narrationVolumeDb }),
       ...(st.fadeInSec !== undefined && { fadeInSec: st.fadeInSec }),
@@ -835,6 +857,9 @@ async function muxAudioWithFfmpeg(args: {
   outputPath: string;
   musicPath?: string;
   narrationPath?: string;
+  /** Per-frame narration: each segment delayed to its frame's start time. When
+   *  set, takes precedence over `narrationPath`. */
+  narrationSegments?: Array<{ path: string; delaySec: number }>;
   musicVolumeDb?: number;
   narrationVolumeDb?: number;
   fadeInSec?: number;
@@ -843,7 +868,11 @@ async function muxAudioWithFfmpeg(args: {
 }): Promise<void> {
   const { spawn } = await import('node:child_process');
   const hasMusic = !!args.musicPath;
-  const hasNarration = !!args.narrationPath;
+  // Normalize narration to a list of delayed segments (single track → one seg @0).
+  const narrSegs = (args.narrationSegments && args.narrationSegments.length > 0)
+    ? args.narrationSegments
+    : (args.narrationPath ? [{ path: args.narrationPath, delaySec: 0 }] : []);
+  const hasNarration = narrSegs.length > 0;
   if (!hasMusic && !hasNarration) return; // nothing to mix
 
   const musicVol = args.musicVolumeDb ?? -18;
@@ -851,13 +880,13 @@ async function muxAudioWithFfmpeg(args: {
   const fadeIn = args.fadeInSec ?? 0;
   const fadeOut = args.fadeOutSec ?? 0;
 
-  // Inputs: [0] video, then music / narration in order.
+  // Inputs: [0] video, then music, then each narration segment in order.
   const inputs: string[] = ['-i', args.videoPath];
   let musicIdx = -1;
-  let narrIdx = -1;
   let next = 1;
   if (hasMusic) { inputs.push('-i', args.musicPath!); musicIdx = next++; }
-  if (hasNarration) { inputs.push('-i', args.narrationPath!); narrIdx = next++; }
+  const narrInputIdx: number[] = [];
+  for (const seg of narrSegs) { inputs.push('-i', seg.path); narrInputIdx.push(next++); }
 
   // Build a filter graph producing a single [aout] label.
   const filters: string[] = [];
@@ -874,7 +903,20 @@ async function muxAudioWithFfmpeg(args: {
     mixLabels.push('[bg]');
   }
   if (hasNarration) {
-    filters.push(`[${narrIdx}:a]volume=${narrVol}dB[vo]`);
+    // Delay each segment to its frame's start, set gain, then mix (segments do
+    // not overlap, so normalize=0 keeps each at full level).
+    const voLabels: string[] = [];
+    narrSegs.forEach((seg, i) => {
+      const ms = Math.max(0, Math.round(seg.delaySec * 1000));
+      const delay = ms > 0 ? `adelay=${ms}:all=1,` : '';
+      filters.push(`[${narrInputIdx[i]}:a]${delay}volume=${narrVol}dB[vo${i}]`);
+      voLabels.push(`[vo${i}]`);
+    });
+    if (voLabels.length === 1) {
+      filters.push(`${voLabels[0]}anull[vo]`);
+    } else {
+      filters.push(`${voLabels.join('')}amix=inputs=${voLabels.length}:duration=longest:dropout_transition=0:normalize=0[vo]`);
+    }
     mixLabels.push('[vo]');
   }
   if (mixLabels.length === 2) {
