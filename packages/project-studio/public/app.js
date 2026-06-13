@@ -914,6 +914,19 @@ function renderMain() {
 function wireSoundtrackPanel() {
   const panel = document.getElementById('soundtrack-panel');
   if (!panel) return;
+  // Populate the narration-voice select from the SELECTED TTS provider's voices
+  // (edge → Vietnamese neural voices; MiniMax has none listed → keep the static
+  // MiniMax options). Without this, an edge provider would receive a MiniMax
+  // voice id and fail.
+  (async () => {
+    try {
+      const d = await fetch('/api/audio/providers').then((r) => r.json());
+      const sel = document.getElementById('st-narration-voice');
+      if (sel && (d.voices ?? []).length) {
+        sel.innerHTML = d.voices.map((v) => `<option value="${v.id}"${v.id === d.selection.ttsVoiceId ? ' selected' : ''}>${esc(v.label)}</option>`).join('');
+      }
+    } catch { /* keep the static options */ }
+  })();
   const musicPrompt = document.getElementById('st-music-prompt');
   const narrationText = document.getElementById('st-narration-text');
   const musicVol = document.getElementById('st-music-vol');
@@ -3003,6 +3016,23 @@ async function renderSettingsAudio(panel) {
     <h3>${esc(t('settings.audio.title'))}</h3>
     <div class="panel-sub">${esc(t('settings.audio.subtitle'))}</div>
     <div class="audio-config" id="audio-config">
+      <div class="audio-providers" id="audio-providers">
+        <label class="audio-field">
+          <span>${esc(t('settings.audio.tts_provider'))}</span>
+          <select id="audio-tts-provider"></select>
+        </label>
+        <label class="audio-field">
+          <span>${esc(t('settings.audio.voice'))}</span>
+          <select id="audio-tts-voice"></select>
+        </label>
+        <label class="audio-field">
+          <span>${esc(t('settings.audio.music_provider'))}</span>
+          <select id="audio-music-provider"></select>
+        </label>
+        <span class="audio-save-state" id="audio-prov-state"></span>
+      </div>
+      <hr class="audio-sep" />
+      <p class="panel-sub" style="font-size:11.5px;margin:0 0 8px">${esc(t('settings.audio.minimax_section'))}</p>
       <div class="audio-status" id="audio-status">${esc(t('settings.audio.loading'))}</div>
       <label class="audio-field">
         <span>${esc(t('settings.audio.api_key'))}</span>
@@ -3048,6 +3078,39 @@ async function renderSettingsAudio(panel) {
     }
   };
   await refresh();
+
+  // --- Provider selection (TTS / music / voice) ---
+  const ttsSel = panel.querySelector('#audio-tts-provider');
+  const voiceSel = panel.querySelector('#audio-tts-voice');
+  const musicSel = panel.querySelector('#audio-music-provider');
+  const provState = panel.querySelector('#audio-prov-state');
+  const optLabel = (p) => `${p.label}${p.ok ? '' : ' · ' + t('settings.audio.needs_setup')}`;
+
+  const loadProviders = async () => {
+    const d = await fetch('/api/audio/providers').then((r) => r.json());
+    ttsSel.innerHTML = d.tts.map((p) => `<option value="${p.id}"${p.id === d.selection.ttsProvider ? ' selected' : ''}>${esc(optLabel(p))}</option>`).join('');
+    musicSel.innerHTML = d.music.map((p) => `<option value="${p.id}"${p.id === d.selection.musicProvider ? ' selected' : ''}>${esc(optLabel(p))}</option>`).join('');
+    voiceSel.innerHTML = (d.voices ?? []).map((v) => `<option value="${v.id}"${v.id === d.selection.ttsVoiceId ? ' selected' : ''}>${esc(v.label)}</option>`).join('');
+    voiceSel.parentElement.style.display = (d.voices ?? []).length ? '' : 'none';
+  };
+  await loadProviders();
+
+  const saveProviders = async (reloadVoices) => {
+    provState.textContent = t('settings.audio.saving');
+    try {
+      await fetch('/api/audio/config', {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ttsProvider: ttsSel.value, musicProvider: musicSel.value, ttsVoiceId: voiceSel.value || '' }),
+      });
+      provState.textContent = t('settings.audio.saved');
+      if (reloadVoices) await loadProviders();
+    } catch (e) {
+      provState.textContent = t('settings.audio.save_failed', { message: (e?.message ?? e) });
+    }
+  };
+  ttsSel.onchange = () => saveProviders(true);   // provider change → refresh its voices
+  voiceSel.onchange = () => saveProviders(false);
+  musicSel.onchange = () => saveProviders(false);
 
   // Region quick-pick: fills the Base URL with the correct regional endpoint.
   // MiniMax keys are region-bound (an api.minimax.io key won't auth against
