@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AssetStore,
+  AudioRegistry,
   EngineRegistry,
   ProjectOrchestrator,
   ProjectStore,
@@ -25,6 +26,7 @@ export interface CliContext {
   orchestrator: ProjectOrchestrator;
   templatesDir: string;
   mediaConfig: MediaConfigStore;
+  audio: AudioRegistry;
 }
 
 export function findProjectRoot(start: string = process.cwd()): string {
@@ -79,6 +81,7 @@ export async function bootstrap(opts: { cwd?: string } = {}): Promise<CliContext
   });
 
   const mediaConfig = new MediaConfigStore(projectRoot);
+  const audio = new AudioRegistry();
 
-  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig };
+  return { projectRoot, engines, templates, projects, assets, orchestrator, templatesDir, mediaConfig, audio };
 }

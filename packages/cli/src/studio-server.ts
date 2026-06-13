@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import type { CliContext } from './context.js';
-import { AssetStore, generateTts, generateMusic } from '@html-video/core';
+import { AssetStore } from '@html-video/core';
 import { extractUrls, fetchSource } from './fetch-source.js';
 import { detectAll, findAgent, spawnAgent } from '@html-video/runtime';
 
@@ -433,16 +433,11 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
         };
         try {
           sse({ type: 'audio_started' });
-          const creds = ctx.mediaConfig.resolveMinimax();
-          if (!creds) {
-            sse({
-              type: 'audio_failed',
-              message:
-                'MiniMax API key not configured — add it in Settings → Audio (or set OD_MINIMAX_API_KEY).',
-            });
-            res.end();
-            return;
-          }
+          // Resolve the configured providers (default edge + cc0 — both free, no
+          // key). MiniMax creds, when present, ride inside the audio config.
+          const audioCfg = ctx.mediaConfig.resolveAudioConfig();
+          const ttsP = ctx.audio.tts(audioCfg);
+          const musicP = ctx.audio.music(audioCfg);
 
           const project = await ctx.orchestrator.load(projectId);
           const soundtrack = { ...(project.soundtrack ?? {}) };
@@ -454,12 +449,28 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
             return;
           }
 
+          // Best-effort target length so a CC0 bed matches the video (sum the
+          // content-graph node durations; undefined falls back to a default).
+          let videoDurationSec: number | undefined;
+          try {
+            const g = await ctx.orchestrator.readContentGraph(projectId);
+            const sum = (g?.nodes ?? []).reduce((n, node) => n + (Number(node.durationSec) || 0), 0);
+            if (sum > 0) videoDurationSec = sum;
+          } catch { /* no graph — provider default */ }
+
           if (wantMusic) {
+            const musicAvail = await musicP.isAvailable(audioCfg);
+            if (!musicAvail.ok) {
+              sse({ type: 'audio_failed', message: `Music provider "${musicP.label}" unavailable: ${musicAvail.reason ?? 'not ready'}` });
+              res.end();
+              return;
+            }
             sse({ type: 'audio_progress', stage: 'music', message: 'generating background music…' });
-            const music = await generateMusic({
+            const music = await musicP.generateMusic({
               prompt: body.music!.prompt!.trim(),
               instrumental: body.music!.instrumental ?? true,
-              creds,
+              ...(videoDurationSec !== undefined && { durationSec: videoDurationSec }),
+              cfg: audioCfg,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
@@ -474,12 +485,22 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
           }
 
           if (wantNarration) {
+            const ttsAvail = await ttsP.isAvailable(audioCfg);
+            if (!ttsAvail.ok) {
+              sse({ type: 'audio_failed', message: `TTS provider "${ttsP.label}" unavailable: ${ttsAvail.reason ?? 'not ready'}` });
+              res.end();
+              return;
+            }
             sse({ type: 'audio_progress', stage: 'narration', message: 'generating narration…' });
-            const nar = await generateTts({
-              text: body.narration!.text!.trim(),
-              ...(body.narration!.voiceId !== undefined && { voiceId: body.narration!.voiceId }),
-              ...(body.narration!.languageBoost !== undefined && { languageBoost: body.narration!.languageBoost }),
-              creds,
+            const narrText = body.narration!.text!.trim();
+            const nar = await ttsP.generateTts({
+              text: narrText,
+              // Voice precedence: explicit per-request voice → configured voice.
+              ...(body.narration!.voiceId !== undefined
+                ? { voiceId: body.narration!.voiceId }
+                : (audioCfg.ttsVoiceId ? { voiceId: audioCfg.ttsVoiceId } : {})),
+              lang: detectUserLang(narrText),
+              cfg: audioCfg,
             });
             const { asset } = await ctx.orchestrator.addBufferAsset(
               projectId,
@@ -630,6 +651,33 @@ export async function startStudioServer(ctx: CliContext, port: number): Promise<
       if (url.pathname === '/api/config/minimax' && m === 'DELETE') {
         ctx.mediaConfig.clearMinimax();
         return json(res, 200, ctx.mediaConfig.getMinimaxStatus());
+      }
+
+      // Audio providers: which TTS / music providers exist + are available, the
+      // current selection, and the selected TTS provider's voices (for the picker).
+      if (url.pathname === '/api/audio/providers' && m === 'GET') {
+        const cfg = ctx.mediaConfig.resolveAudioConfig();
+        const selection = ctx.mediaConfig.getAudio();
+        return json(res, 200, {
+          selection,
+          tts: await ctx.audio.availableTts(cfg),
+          music: await ctx.audio.availableMusic(cfg),
+          voices: ctx.audio.tts(cfg).listVoices?.() ?? [],
+        });
+      }
+      // Persist the audio provider/voice selection from Settings → Audio.
+      if (url.pathname === '/api/audio/config' && m === 'PUT') {
+        const body = (await readBody(req)) as { ttsProvider?: string; musicProvider?: string; ttsVoiceId?: string };
+        ctx.mediaConfig.setAudio({
+          ...(body.ttsProvider !== undefined && { ttsProvider: body.ttsProvider }),
+          ...(body.musicProvider !== undefined && { musicProvider: body.musicProvider }),
+          ...(body.ttsVoiceId !== undefined && { ttsVoiceId: body.ttsVoiceId }),
+        });
+        const cfg = ctx.mediaConfig.resolveAudioConfig();
+        return json(res, 200, {
+          selection: ctx.mediaConfig.getAudio(),
+          voices: ctx.audio.tts(cfg).listVoices?.() ?? [],
+        });
       }
 
       // Agents (detected on each call; cheap thanks to the in-process cache)
